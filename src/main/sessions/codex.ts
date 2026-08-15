@@ -1,11 +1,11 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { agentPaths } from "../paths";
 import { join } from "node:path";
 import { HEAD_LINES, findJsonString, lastActivityOf } from "./jsonl";
 import { makeSession } from "./scan";
 import type { ScanResult, Session } from "./types";
 
-export const defaultCodexRoot = (): string => join(homedir(), ".codex", "sessions");
+export const defaultCodexRoot = (): string => join(agentPaths().codex.home.path, "sessions");
 
 /** 递归收集 `YYYY/MM/DD/` 下的会话文件。层级本身不带任何项目信息。 */
 function collect(dir: string, out: string[]): void {

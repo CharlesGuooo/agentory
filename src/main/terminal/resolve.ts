@@ -7,6 +7,37 @@ export interface ResolvedCommand {
   args: string[];
   /** 怎么解析出来的，出问题时用来定位 */
   via: string;
+  /** 起这个进程时必须补上的环境变量。只有回落到 electron 当 node 用时才有。 */
+  env?: Record<string, string>;
+}
+
+/**
+ * 真正的 node。
+ *
+ * **不能用 `process.execPath`** —— 那句原本抄自 `probes/resolve-agent.mjs`，
+ * 那是个纯 Node 脚本，`execPath` 确实是 node；但在 **Electron 主进程**里它是
+ * `electron.exe`。`electron.exe some.js` 不会把 js 当 node 脚本跑，
+ * 而是当成一个 app 去加载 —— codex 和 pi 就是这样起不来的。
+ *
+ * （`session.test.ts` 里那几个用 `process.execPath` 的测试证明不了这一点：
+ *   它们在 vitest 下跑，那里 `execPath` 就是 node。）
+ *
+ * 优先去 PATH 上找真的 node（shim 本来走的也是它）；实在没有再让 electron
+ * 以 node 模式跑 —— 那条回落要靠 `ELECTRON_RUN_AS_NODE`，而它会被子进程继承，
+ * 所以只在没得选的时候用。
+ */
+function nodeExe(): { exe: string; env?: Record<string, string> } {
+  try {
+    const found = execFileSync("where.exe", ["node"], { encoding: "utf8" })
+      .split("\n")
+      // trim 顺手把 \r 去掉，所以按 \n 切就够
+      .map((s) => s.trim())
+      .find((p) => p.toLowerCase().endsWith(".exe") && existsSync(p));
+    if (found) return { exe: found };
+  } catch {
+    // PATH 里没有 node
+  }
+  return { exe: process.execPath, env: { ELECTRON_RUN_AS_NODE: "1" } };
 }
 
 /**
@@ -57,7 +88,8 @@ export function resolveCommand(name: string): ResolvedCommand {
       if (!hit) continue;
       const script = expand(hit);
       if (existsSync(script)) {
-        return { exe: process.execPath, args: [script], via: `cmd-shim-node:${cmd}` };
+        const node = nodeExe();
+        return { ...node, args: [script], via: `cmd-shim-node:${cmd}` };
       }
     }
   }

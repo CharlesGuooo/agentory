@@ -541,6 +541,24 @@ async function smokeHarness(win: BrowserWindow): Promise<void> {
   await wait(300);
 }
 
+/** 诊断面板：客户会复制给你的就是这段文本。 */
+async function smokeDiag(win: BrowserWindow): Promise<void> {
+  await run(win, 'document.getElementById("gear").click()');
+  await wait(600);
+  await run(win, 'document.getElementById("diagRun").click()');
+  await wait(4000);
+  const t = (await run(
+    win,
+    'JSON.stringify({ 状态: document.getElementById("diagStatus").textContent, 文本: document.getElementById("diagBox").textContent })',
+  )) as string;
+  const { 状态, 文本 } = JSON.parse(t) as { 状态: string; 文本: string };
+  say("smoke-diag", 状态);
+  process.stdout.write(`[diag-begin]
+${文本}
+[diag-end]
+`);
+}
+
 /** 摆出各个界面状态并逐一截图。 */
 async function smokeShots(win: BrowserWindow, dir: string): Promise<void> {
   mkdirSync(dir, { recursive: true });
@@ -776,6 +794,7 @@ export function attachSmoke(win: BrowserWindow, quit: () => void): void {
       if (env("SUMMARY") === "1") await smokeSummary(win);
       if (env("VERSIONS") === "1") await smokeVersions(win);
       if (env("HARNESS") === "1") await smokeHarness(win);
+      if (env("DIAG") === "1") await smokeDiag(win);
       if (env("KEYS") === "1") await smokeKeys(win);
       if (env("HISTPERF") === "1") await smokeHistPerf(win);
       if (env("BELL") === "1") await smokeBell(win);

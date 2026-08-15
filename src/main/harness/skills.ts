@@ -1,5 +1,5 @@
 import { existsSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
+import { agentPaths } from "../paths";
 import { join } from "node:path";
 import { ALL_AGENTS, type AgentId } from "../sessions/types";
 import type { HarnessSource, Scope, SkillEntry } from "./types";
@@ -31,13 +31,21 @@ import type { HarnessSource, Scope, SkillEntry } from "./types";
  */
 export const isSkillDir = (p: string): boolean => existsSync(join(p, "SKILL.md"));
 
-/** 每个 agent 的全局 skills 目录。 */
-const GLOBAL_ROOTS: Record<AgentId, string> = {
-  claude: join(homedir(), ".claude", "skills"),
-  codex: join(homedir(), ".codex", "skills"),
-  opencode: join(homedir(), ".config", "opencode", "skills"),
-  pi: join(homedir(), ".pi", "agent", "skills"),
-  grok: join(homedir(), ".grok", "skills"),
+/**
+ * 每个 agent 的全局 skills 目录。
+ *
+ * **是函数不是常量** —— 它现在依赖环境变量和文件系统（见 `paths.ts`），
+ * 模块加载时算一次会把「客户机器上配置目录被改到别处」这种情况永久算错。
+ */
+const globalRoots = (): Record<AgentId, string> => {
+  const p = agentPaths();
+  return {
+    claude: join(p.claude.configDir.path, "skills"),
+    codex: join(p.codex.home.path, "skills"),
+    opencode: join(p.opencode.configDir.path, "skills"),
+    pi: join(p.pi.agentDir.path, "skills"),
+    grok: join(p.grok.home.path, "skills"),
+  };
 };
 
 /** 每个 agent 的项目级 skills 目录，相对于项目根。 */
@@ -51,7 +59,7 @@ const PROJECT_SUBDIRS: Record<AgentId, string[]> = {
 
 /** 某个 agent 在某个作用域下的 skills 目录。 */
 export function skillsRoot(agent: AgentId, scope: Scope): string {
-  if (scope.kind === "global") return GLOBAL_ROOTS[agent];
+  if (scope.kind === "global") return globalRoots()[agent];
   return join(scope.cwd, ...PROJECT_SUBDIRS[agent]);
 }
 

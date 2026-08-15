@@ -1,11 +1,11 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { agentPaths } from "../paths";
 import { join } from "node:path";
 import { lastActivityOf, readHead } from "./jsonl";
 import { makeSession } from "./scan";
 import type { ScanResult, Session } from "./types";
 
-export const defaultPiRoot = (): string => join(homedir(), ".pi", "agent", "sessions");
+export const defaultPiRoot = (): string => join(agentPaths().pi.agentDir.path, "sessions");
 
 interface PiHeader {
   type?: string;

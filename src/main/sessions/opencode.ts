@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
+import { agentPaths } from "../paths";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { makeSession } from "./scan";
@@ -13,7 +13,7 @@ export const BUSY_TIMEOUT_MS = 2000;
 
 /** OpenCode 把所有会话放在一个 SQLite 库里。 */
 export const defaultOpenCodeDb = (): string =>
-  join(homedir(), ".local", "share", "opencode", "opencode.db");
+  join(agentPaths().opencode.dataDir.path, "opencode.db");
 
 interface Row {
   id: string;

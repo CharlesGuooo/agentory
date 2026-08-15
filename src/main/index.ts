@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { app, BrowserWindow, ipcMain, Notification } from "electron";
 import { registerAgentsIpc } from "./agents/ipc";
 import { registerFavoritesIpc } from "./favorites/ipc";
+import { registerDiagnosticsIpc } from "./diagnostics";
 import { registerHarnessIpc } from "./harness/ipc";
 import { registerSessionsIpc } from "./sessions/ipc";
 import { registerSummaryIpc } from "./summary/ipc";
@@ -95,6 +96,7 @@ void app.whenReady().then(() => {
   registerSummaryIpc(() => mainWindow, summariesEnabled);
   registerAgentsIpc(() => mainWindow, versionCheckEnabled);
   registerHarnessIpc();
+  registerDiagnosticsIpc();
 
   // 主题变化时把原生窗口控件也染上色 —— 变体解析在渲染层，所以由它回传
   ipcMain.on("window:overlay", (_e, c: { color: string; symbolColor: string }) => {

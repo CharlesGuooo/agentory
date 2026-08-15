@@ -1,11 +1,11 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { agentPaths } from "../paths";
 import { join } from "node:path";
 import { HEAD_LINES, findJsonString, lastActivityOf, readHead } from "./jsonl";
 import { makeSession } from "./scan";
 import type { ScanResult, Session } from "./types";
 
-export const defaultClaudeRoot = (): string => join(homedir(), ".claude", "projects");
+export const defaultClaudeRoot = (): string => join(agentPaths().claude.configDir.path, "projects");
 
 /**
  * Claude 的存储：

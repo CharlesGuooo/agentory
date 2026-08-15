@@ -39,6 +39,8 @@ export function spawnManaged(
     cwd: req.cwd,
     cols: req.cols,
     rows: req.rows,
+    // 解析器要求补的环境变量（回落到 electron 当 node 用时的 ELECTRON_RUN_AS_NODE）
+    ...(resolved.env ? { env: { ...process.env, ...resolved.env } } : {}),
   });
   const id = randomUUID();
   sessions.set(id, session);

@@ -1,10 +1,10 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { agentPaths } from "../paths";
 import { join } from "node:path";
 import { makeSession } from "./scan";
 import type { ScanResult, Session } from "./types";
 
-export const defaultGrokRoot = (): string => join(homedir(), ".grok", "sessions");
+export const defaultGrokRoot = (): string => join(agentPaths().grok.home.path, "sessions");
 
 interface GrokSummary {
   info?: { id?: string; cwd?: string };

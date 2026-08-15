@@ -138,6 +138,21 @@
             <div class="agents" id="verRows"></div>
           </section>
           <section class="field">
+            <label>诊断</label>
+            <p class="desc">
+              agentory 靠「五个 agent 的东西在这些路径上」工作。你那边一旦不成立
+              （配置目录被环境变量搬走、agent 是原生安装、只装了其中几个），
+              界面会显示成「你没有」而不是报错。<b>这一屏说清我们找了哪儿、找到没有。</b>
+              里面只有路径和数量，<b>不含任何文件内容或密钥</b>。
+            </p>
+            <div class="row">
+              <button class="btn-ghost" id="diagRun" type="button">收集诊断信息</button>
+              <button class="btn-ghost" id="diagCopy" type="button" hidden>复制</button>
+              <span class="desc" id="diagStatus"></span>
+            </div>
+            <pre class="peek" id="diagBox" hidden></pre>
+          </section>
+          <section class="field">
             <label>主题</label>
             <p class="desc" id="themeDesc">把自己的 JSON 放进主题目录即可新增</p>
             <div class="cards" id="cards"></div>

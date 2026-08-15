@@ -149,6 +149,13 @@ const api = {
   harnessUninstallSkill: (path: string, scope: Scope): Promise<SkillActionResult> =>
     ipcRenderer.invoke("harness:uninstallSkill", { path, scope }),
 
+  /**
+   * 诊断信息。**给客户排障用的** —— 客户机器我们摸不到，
+   * 而「配置目录不在我们找的地方」会静默显示成「你没有」。
+   * 只含路径、找到没找到、数量；不含任何文件内容或凭证。
+   */
+  diagnosticsText: (): Promise<string> => ipcRenderer.invoke("diagnostics:text"),
+
   /** 右键菜单要用的两件小事。`clipboard` / `shell` 在 preload 里可直接用，不必绕一趟 IPC。 */
   copy: (text: string): void => clipboard.writeText(text),
   openFolder: (dir: string): Promise<string> => shell.openPath(dir),

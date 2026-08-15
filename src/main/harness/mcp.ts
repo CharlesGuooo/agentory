@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { agentPaths } from "../paths";
 import { join } from "node:path";
 import { inlineSecretPaths, keysOf, safeUrl, stringsOf } from "./fields";
 import { readToml } from "./toml";
@@ -125,10 +125,8 @@ function readJson(path: string): unknown {
  * 取完 `mcpServers` 就让其余的被回收，一个字段都不该进我们的结构。
  */
 export function claudeMcpSources(): { path: string; result: McpResult }[] {
-  return [
-    join(homedir(), ".claude.json"),
-    join(homedir(), ".claude", "settings.json"),
-  ].map((path) => {
+  const p = agentPaths().claude;
+  return [p.claudeJson.path, join(p.configDir.path, "settings.json")].map((path) => {
     if (!existsSync(path)) return { path, result: missing() };
     const j = readJson(path) as { mcpServers?: unknown } | null;
     if (j === null) return { path, result: unreadable("文件不是合法 JSON") };
@@ -136,7 +134,7 @@ export function claudeMcpSources(): { path: string; result: McpResult }[] {
   });
 }
 
-export const codexMcpPath = (): string => join(homedir(), ".codex", "config.toml");
+export const codexMcpPath = (): string => join(agentPaths().codex.home.path, "config.toml");
 
 export function readCodexMcp(path = codexMcpPath()): McpResult {
   if (!existsSync(path)) return missing();
@@ -146,7 +144,7 @@ export function readCodexMcp(path = codexMcpPath()): McpResult {
 }
 
 export const openCodeMcpPath = (): string =>
-  join(homedir(), ".config", "opencode", "opencode.json");
+  join(agentPaths().opencode.configDir.path, "opencode.json");
 
 export function readOpenCodeMcp(path = openCodeMcpPath()): McpResult {
   if (!existsSync(path)) return missing();
@@ -156,7 +154,7 @@ export function readOpenCodeMcp(path = openCodeMcpPath()): McpResult {
   return done(fromMap(j.mcp, path, "environment"));
 }
 
-export const grokMcpPath = (): string => join(homedir(), ".grok", "config.toml");
+export const grokMcpPath = (): string => join(agentPaths().grok.home.path, "config.toml");
 
 /**
  * grok 多一层：`[compat.claude] mcps = false` 表达的不是某条服务器停用，

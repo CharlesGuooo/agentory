@@ -34,3 +34,41 @@ describe("resolveCommand", () => {
     });
   }
 });
+
+describe("走 node 脚本的 agent 必须解析到真的 node", () => {
+  /**
+   * **这条是被诊断面板抓出来的。**
+   *
+   * `cmd-shim-node` 那条分支原来返回 `process.execPath`。逻辑抄自
+   * `probes/resolve-agent.mjs` —— 那是纯 Node 脚本，`execPath` 确实是 node；
+   * 但在 **Electron 主进程**里它是 `electron.exe`，而
+   * `electron.exe some.js` 不会把 js 当脚本跑，会当成一个 app 去加载。
+   * 也就是说 codex 和 pi 在应用里根本起不来。
+   *
+   * 这个文件里别的测试证明不了这一点：它们在 vitest 下跑，那里
+   * `process.execPath` 恰好就是 node，怎么写都对。
+   * 所以这条断言的是**结果本身**：解析出来的必须是个 node，而且是从 PATH 上找到的。
+   */
+  it("codex / pi 解析到 node.exe，且不是靠 electron 回落", (ctx) => {
+    const shimNode = (["codex", "pi"] as const)
+      .map((a) => {
+        try {
+          return { agent: a, r: resolveCommand(a) };
+        } catch {
+          return null;
+        }
+      })
+      .filter((x): x is { agent: "codex" | "pi"; r: ReturnType<typeof resolveCommand> } => x !== null)
+      .filter((x) => x.r.via.startsWith("cmd-shim-node"));
+
+    if (shimNode.length === 0) return void ctx.skip();
+
+    for (const { agent, r } of shimNode) {
+      console.log(`  ${agent.padEnd(6)} → ${r.exe}${r.env ? `  （回落，带 ${Object.keys(r.env).join()}）` : ""}`);
+      expect(r.exe.toLowerCase(), `${agent} 解析成了 electron`).not.toContain("electron");
+      expect(r.exe.toLowerCase().endsWith("node.exe"), `${agent} 没解析到 node`).toBe(true);
+      // PATH 上找到了真 node，就不该带 ELECTRON_RUN_AS_NODE 那条回落
+      expect(r.env, `${agent} 不该需要回落`).toBeUndefined();
+    }
+  });
+});

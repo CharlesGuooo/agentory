@@ -658,6 +658,27 @@ if (!agentory) {
       (p.last ? ` · ${p.last.slice(0, 30)}` : "");
   });
 
+  // ---------- 诊断（客户机器我们摸不到） ----------
+
+  let diagText = "";
+  $("diagRun").addEventListener("click", () => {
+    $("diagStatus").textContent = "正在收集…";
+    void api.diagnosticsText().then((t) => {
+      diagText = t;
+      $("diagBox").textContent = t;
+      $("diagBox").hidden = false;
+      $("diagCopy").hidden = false;
+      // 有 ⚠ 就直说，别让人自己在文本里找
+      const bad = (t.match(/⚠/g) ?? []).length;
+      $("diagStatus").textContent = bad > 0 ? `${bad} 个问题` : "没发现问题";
+      selfCheck["diag"] = { 字数: t.length, 问题: bad };
+    });
+  });
+  $("diagCopy").addEventListener("click", () => {
+    api.copy(diagText);
+    $("diagStatus").textContent = "已复制，可以直接贴给维护者";
+  });
+
   // ---------- Skills 与 MCP（P2-b） ----------
 
   setupHarness({

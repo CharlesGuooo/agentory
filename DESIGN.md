@@ -663,6 +663,87 @@ Node 没有 TOML（不像 JSON 有 `JSON.parse`），所以「选平台能力而
 
 ---
 
+### D-17 · 别人的机器（`add-compat`，2026-08-15）
+
+到 D-16 为止，**所有验证都只在开发机上做过** —— 而开发机恰好是五个 agent 全装、
+全走默认路径、用户名 ASCII、家目录没被重定向的那种。客户机器几乎不会都这样。
+
+#### 问题有多大
+
+代码里原本有 **15 处写死的路径**（`sessions/` 五个扫描器 + `harness/` 十处），
+全部形如 `join(homedir(), ".claude", …)`。它们是整个产品的地基：
+**一处在别人机器上不成立，那个 agent 就静默显示成「你没有」** ——
+不是报错，是看起来一切正常。这是最难查的失败模式。
+
+#### 查实的两类差异
+
+**① 配置目录可以被环境变量改掉**（证据来自各自的二进制与官方文档）：
+
+| agent | 覆盖变量 |
+|---|---|
+| claude | `CLAUDE_CONFIG_DIR` |
+| codex | `CODEX_HOME` |
+| opencode | `OPENCODE_CONFIG_DIR` / `XDG_CONFIG_HOME` / `XDG_DATA_HOME` |
+| grok | `GROK_HOME` / `XDG_CONFIG_HOME` |
+| pi | **没找到 —— 没找到就不编一个** |
+
+**② claude 的主流安装方式已经不是 npm 了。** 原生安装器自 2026-05 起是官方推荐，
+npm「不再是主要测试和更新路径」。原生版装在 `~/.local/bin`，**没有 `package.json`**，
+版本在 `~/.local/share/claude/versions/<版本号>/`。
+
+#### 解法：候选列表，不是「一条规则」
+
+每个 agent 给一串候选（环境变量优先），**按顺序取第一个存在的**，并把试过的都记下来。
+
+这样设计不是为了灵活，是因为**我们对细节的把握程度不一样** ——
+比如 `CLAUDE_CONFIG_DIR` 会不会把 `~/.claude.json`（它是 `~/.claude` 的兄弟）
+一起搬走，文档没说清。按顺序试让我们**不必赌对**：只要候选里包含正确答案就找得到。
+
+而 `tried` 让诊断面板说得出「我们找了这几个地方」，而不是干巴巴一句「没有」。
+
+#### 「别人的机器」是测试，不是想象
+
+在临时目录里造出别人的机器，让真扫描器去读 —— 环境变量搬走配置、
+只装一部分、一个都没装、中文与空格路径、**>260 字符的超长路径**、
+几百个 project 条目的大 `.claude.json`。
+
+其中一类用例走 `vi.stubEnv` 而不是传路径参数：**传路径只验了读取逻辑，
+验不到「路径是怎么算出来的」那一段**，而那正是这一刀新改的东西。
+
+#### 诊断面板解决的不是 bug，是「客户机器你摸不到」
+
+一屏列出：七条路径找到没找到、命中的是哪个环境变量、五个 agent 在 PATH 里解析成什么、
+各有多少会话和 skill。**可复制**（截图可能糊，文本不会）。
+里面只有路径和数量，**不含任何文件内容或凭证**。
+
+它还会主动指出一种沉默故障：**「PATH 里有这个 agent，但会话和 skills 都是 0」**——
+那几乎肯定是配置目录不在我们找的位置。
+
+> **它第一次跑就抓到了一个真 bug**（见下）。这就是它存在的理由。
+
+#### 顺带修掉的真 bug：codex / pi 在应用里根本起不来
+
+`resolve.ts` 的 `cmd-shim-node` 分支原本返回 `process.execPath`。
+那句抄自 `probes/resolve-agent.mjs` —— 纯 Node 脚本里 `execPath` 确实是 node，
+但在 **Electron 主进程**里它是 `electron.exe`，而 `electron.exe some.js`
+不会把 js 当脚本跑，会当成一个 app 去加载。
+
+诊断面板第一次跑就把它显示出来了：
+
+```
+codex  cmd-shim-node:…codex.cmd → …
+ode_modules\electron\dist\electron.exe
+```
+
+改成去 PATH 上找真的 node（shim 本来走的也是它），找不到再回落到
+`ELECTRON_RUN_AS_NODE`（它会被子进程继承，所以只在没得选时用）。
+
+> `session.test.ts` 里那几个用 `process.execPath` 的测试**证明不了这一点** ——
+> 它们在 vitest 下跑，那里 `execPath` 恰好就是 node，怎么写都对。
+> 新的断言断的是**结果本身**：解析出来的必须是 node，而且不是靠回落。
+
+---
+
 ### D-W1 · 工作集条目只存 4 个字段，不缓存索引信息
 
 `{agent, sessionId, cwd, addedAt}`。**不存** `lastActivity` / `nativeTitle` / `cwdExists`。
