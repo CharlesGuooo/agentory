@@ -96,8 +96,44 @@
       **Electron 的 appData 从 `USERPROFILE` 推**，`APPDATA` 不起作用。
       改成两个根都搜。**猜错路径的断言比没有断言更糟。**
 
-## 7. 真正只剩下的（需要用户提权 + 手动登录）
+## 7. 第二个 Windows 账户：跑完了
 
-- [ ] 7.1 **全新的 Windows 用户配置文件**：首次登录、SmartScreen 拦截的实际表现。
-      DPAPI 的**机制**已验（6.1），换账户验的是「另一把用户密钥」——
-      同一个 API、同一条代码路径，风险已经很低
+用户提权建了 `agentory-test`，其余我用 `Start-Process -Credential` 驱动 ——
+**不需要登录、不需要切用户**。
+
+> **`Start-Process -Credential` 有两个互相矛盾的坑**，都真撞上了：
+> 带 `-WorkingDirectory` 它直接拒绝执行；不带它又会继承**调用方**的当前目录，
+> 而那是项目目录（在 `C:/Users/PC/` 下），目标用户没权限读 →
+> `The directory name is invalid`。
+> 解法是先 `Set-Location` 到一个所有用户可读的目录，再不传 `-WorkingDirectory`。
+>
+> 我事先说过「GUI 可能在别的用户的窗口站里起不来」—— **实测起得来**。
+
+- [x] 7.1 **全新 Windows 配置文件**（`C:/Users/agentory-test`，从没登录过）：
+      ```
+      安装退出码: 0                       ← 标准用户静默安装，不需要管理员
+      主区显示的是: "没有 agent 那套"
+      侧栏: "工作集是空的。先装一个 agent —— 点上面的「新建会话」…"
+      新建会话: 可点的agent 0，出路可见 true，出路链接数 5
+      历史: "还没有任何历史会话 —— 五个 agent 都没有留下会话记录"
+      Skills与MCP: 11 个来源全「没有」，pi MCP「不支持」
+      Agent 区: "本机没有可检查的 agent"，现在检查可点 false
+      诊断: 1 个问题 → ⚠ 一个 agent 都没检测到
+      ```
+      **和模拟环境逐条一致** —— 三个环境变量那套模拟是可信的
+- [x] 7.2 **另一个用户的 DPAPI**：
+      ```
+      ciphertext: 62 bytes  （在 agentory-test 自己的 AppData/Roaming/agentory/ 下）
+      plaintext leaked into file: no       ← 加密真的发生了
+      [dpapi-check] {"解密成功":true}       ← 全新进程 + 另一把用户密钥
+      ```
+- [x] 7.3 **我自己造的一个坑**：第一次跑 DPAPI 那节一行输出都没有，看起来像失败。
+      真相是**安装包打于 15:52，而 DPAPI 冒烟模式 16:32 才写** ——
+      装进去的 exe 里根本没那段代码（验证：旧包 asar 里没有 `dpapi-set`，新包里有）。
+      **陈旧的产物会伪装成功能失败。** 重打包后一次通过
+
+## 8. 还剩什么
+
+- [ ] 8.1 **SmartScreen 的实际观感**。静默安装（`/S`）绕过了它，所以这次没触发。
+      真实客户是双击下载来的 exe，会看到「Windows 已保护你的电脑」——
+      这是**没有代码签名证书**的必然结果，不是 bug。README 里已经写了那一屏怎么过
