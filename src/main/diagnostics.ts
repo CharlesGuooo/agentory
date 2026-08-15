@@ -43,6 +43,12 @@ export interface AgentRow {
   skills: number;
 }
 
+export interface DiagnosticsText {
+  text: string;
+  /** 问题条数。**渲染层读这个，不要去数文本里的 ⚠** —— 从渲染结果里数符号是脆的。 */
+  problems: number;
+}
+
 export interface Diagnostics {
   app: { version: string; electron: string; node: string; platform: string };
   paths: PathRow[];
@@ -100,6 +106,24 @@ export function collectDiagnostics(): Diagnostics {
     return { agent, exe, via, sessions, skills };
   });
 
+  /**
+   * **一个 agent 都没检测到，本身就是最大的问题。**
+   *
+   * 原来的告警条件是 `exe !== null && …`，专测「装了但读不到配置」——
+   * 于是在一台什么都没装、应用完全不可用的机器上，这一屏的结论是「没发现问题」。
+   * 诊断面板成了它自己要治的那个病的患者（本文件开头那段注释说的正是这个失败模式）。
+   */
+  if (agents.every((a) => a.exe === null)) {
+    problems.push(
+      "一个 agent 都没检测到 —— agentory 需要至少装一个 CLI agent 才能用。" +
+        "如果你确实装了，那多半是它不在 PATH 里，或者装在了我们没找的地方（见上面的路径列表）",
+    );
+  }
+  // 装了但七条路径一条都不成立 —— 多半是配置目录整体被搬走了
+  if (agents.some((a) => a.exe !== null) && paths.every((r) => !r.found)) {
+    problems.push("检测到了 agent，但七条配置路径一条都不存在 —— 家目录可能被重定向了");
+  }
+
   return {
     app: {
       version: app.getVersion(),
@@ -143,5 +167,8 @@ export function renderDiagnostics(d: Diagnostics): string {
  * 传一个没人消费的对象只是多一个会漂移的接口。
  */
 export function registerDiagnosticsIpc(): void {
-  ipcMain.handle("diagnostics:text", (): string => renderDiagnostics(collectDiagnostics()));
+  ipcMain.handle("diagnostics:text", (): DiagnosticsText => {
+    const d = collectDiagnostics();
+    return { text: renderDiagnostics(d), problems: d.problems.length };
+  });
 }

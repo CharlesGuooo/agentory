@@ -17,7 +17,8 @@
     "icons": "electron scripts/make-icons.cjs",
     "package": "electron-vite build && electron-builder",
     "package:dir": "electron-vite build && electron-builder --dir",
-    "perf": "vitest run src/main/sessions/real-machine.test.ts --no-file-parallelism -t 单条"
+    "perf": "vitest run src/main/sessions/real-machine.test.ts --no-file-parallelism -t 单条",
+    "verify:clean": "electron-vite build && node scripts/verify-clean.cjs"
   },
   "dependencies": {
     "node-pty": "^1.1.0"

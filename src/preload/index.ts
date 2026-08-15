@@ -1,5 +1,6 @@
 import { clipboard, contextBridge, ipcRenderer, shell } from "electron";
 import type { AgentsState } from "../main/agents/ipc";
+import type { DiagnosticsText } from "../main/diagnostics";
 import type { SkillActionResult } from "../main/harness/ipc";
 import type { HarnessMatrix, Scope } from "../main/harness/types";
 import type { LaunchOptions, LaunchRequest, ResumeRequest } from "../main/sessions/ipc";
@@ -154,11 +155,15 @@ const api = {
    * 而「配置目录不在我们找的地方」会静默显示成「你没有」。
    * 只含路径、找到没找到、数量；不含任何文件内容或凭证。
    */
-  diagnosticsText: (): Promise<string> => ipcRenderer.invoke("diagnostics:text"),
+  diagnosticsText: (): Promise<DiagnosticsText> => ipcRenderer.invoke("diagnostics:text"),
 
   /** 右键菜单要用的两件小事。`clipboard` / `shell` 在 preload 里可直接用，不必绕一趟 IPC。 */
   copy: (text: string): void => clipboard.writeText(text),
   openFolder: (dir: string): Promise<string> => shell.openPath(dir),
+  /** 用系统浏览器打开一个链接。**只放行 https** —— 不让渲染层递任意协议进来。 */
+  openUrl: (url: string): void => {
+    if (/^https:\/\//.test(url)) void shell.openExternal(url);
+  },
 
   /** 让原生窗口控件跟着主题换色。 */
   setWindowOverlay: (color: string, symbolColor: string): void =>

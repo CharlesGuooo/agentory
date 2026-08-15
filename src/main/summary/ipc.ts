@@ -1,5 +1,5 @@
 import { app, ipcMain, safeStorage, type BrowserWindow } from "electron";
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { scanAllAgents } from "../sessions/all";
 import type { AgentId, Session } from "../sessions/types";
@@ -92,6 +92,9 @@ export function registerSummaryIpc(getWindow: () => BrowserWindow | null, enable
     if (!k) {
       if (existsSync(keyPath())) unlinkSync(keyPath());
     } else if (safeStorage.isEncryptionAvailable()) {
+      // 新机器上 userData 目录可能还不存在。两个邻居（theme/service.ts、agents/ipc.ts）
+      // 都建了，这里漏了 —— 漏的后果是 key 静默丢失。
+      mkdirSync(app.getPath("userData"), { recursive: true });
       writeFileSync(keyPath(), safeStorage.encryptString(k));
     }
     return state();

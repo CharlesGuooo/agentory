@@ -69,12 +69,25 @@
       </aside>
       <main class="term-host" id="terminal">
         <!-- 一个会话都没起来时的空态。不是装饰 —— 没有它这里就是一整片黑。 -->
+        <!--
+          两套文案。原来只有下面那套，它断言了「五个 agent 的会话都在里面」——
+          在一台什么都没装的新机器上，那句话是假的，而它是主区最大字号、常驻可见的引导。
+        -->
         <div class="term-empty" id="termEmpty">
-          <p class="te-title">还没有会话在跑</p>
-          <p class="te-line">点左上角<b>新建会话</b>开一个新的。</p>
-          <p class="te-line">
-            或者从<b>历史会话</b>里找回以前的 —— 五个 agent 的会话都在里面，点开就接着聊。
-          </p>
+          <div id="teReady">
+            <p class="te-title">还没有会话在跑</p>
+            <p class="te-line">点左上角<b>新建会话</b>开一个新的。</p>
+            <p class="te-line">
+              或者从<b>历史会话</b>里找回以前的 —— 你用过的 agent 会话都在里面，点开就接着聊。
+            </p>
+          </div>
+          <div id="teNoAgent" hidden>
+            <p class="te-title">还没有检测到任何 agent</p>
+            <p class="te-line">
+              agentory 是 Claude Code / Codex / OpenCode / Pi / Grok 这些 CLI 的工作台，<b>本身不含 agent</b>。
+            </p>
+            <p class="te-line">先装一个再回来 —— 点<b>新建会话</b>，那里有各家的官网链接。</p>
+          </div>
         </div>
       </main>
     </div>
@@ -193,6 +206,22 @@
             </div>
           </section>
           <p class="warn" id="newError" hidden></p>
+          <!--
+            一个 agent 都没检测到时的出路。**只说原因 + 指向官网，不写死安装命令** ——
+            claude 刚从 npm 改成推荐原生安装器，写死的命令会烂掉，
+            而烂掉的安装命令比没有更糟（D-15 立过这条规矩）。
+          -->
+          <div class="no-agent" id="newNoAgent" hidden>
+            <p><b>一个 agent 都没检测到。</b>agentory 是这些 CLI 的工作台，本身不含 agent —— 先装一个再回来。</p>
+            <div class="chips">
+              <button class="btn-ghost btn-mini" type="button" data-url="https://code.claude.com/docs/en/quickstart">Claude Code</button>
+              <button class="btn-ghost btn-mini" type="button" data-url="https://learn.chatgpt.com/docs/codex/cli">Codex</button>
+              <button class="btn-ghost btn-mini" type="button" data-url="https://opencode.ai">OpenCode</button>
+              <button class="btn-ghost btn-mini" type="button" data-url="https://github.com/earendil-works/pi">Pi</button>
+              <button class="btn-ghost btn-mini" type="button" data-url="https://x.ai/cli">Grok</button>
+            </div>
+            <p class="desc">装好之后重开 agentory。如果你确定装了却还是检测不到，去<b>设置 · 诊断</b>看我们找了哪些路径。</p>
+          </div>
         </div>
         <div class="panel-foot">
           <button class="btn-primary" id="newGo" type="button" disabled>开始</button>

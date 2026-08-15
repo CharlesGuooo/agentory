@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { BrowserWindow } from "electron";
 import { livePids } from "./terminal/ipc";
+import { smokeClean } from "./smoke-clean";
 
 /**
  * 冒烟模式：从命令行走完整的点击路径，打印自检，退出。
@@ -795,6 +796,7 @@ export function attachSmoke(win: BrowserWindow, quit: () => void): void {
       if (env("VERSIONS") === "1") await smokeVersions(win);
       if (env("HARNESS") === "1") await smokeHarness(win);
       if (env("DIAG") === "1") await smokeDiag(win);
+      if (env("CLEAN") === "1") await smokeClean(win, env("CLEAN_SHOTS") ?? null);
       if (env("KEYS") === "1") await smokeKeys(win);
       if (env("HISTPERF") === "1") await smokeHistPerf(win);
       if (env("BELL") === "1") await smokeBell(win);

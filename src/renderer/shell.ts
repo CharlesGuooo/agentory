@@ -109,9 +109,14 @@ export function renderSessions(views: SessionView[], activeKey: string | null, c
     .join("");
 
   if (views.length === 0) {
-    $("tree").innerHTML =
-      '<div class="side-empty">工作集是空的。<br>点上面的「新建会话」，' +
-      "或从「历史会话」里恢复一个 —— 加进来的会话会一直留在这里，关掉应用也不会丢。</div>";
+    // 「或从历史会话里恢复一个」在一台没装 agent 的机器上是条死路 —— 那里一条会话都没有。
+    // 跟着主区那块空态的分支走（`teNoAgent` 隐藏 = 装了），两处文案就不可能自相矛盾。
+    const hasAgents = $("teNoAgent").hidden;
+    $("tree").innerHTML = hasAgents
+      ? '<div class="side-empty">工作集是空的。<br>点上面的「新建会话」，' +
+        "或从「历史会话」里恢复一个 —— 加进来的会话会一直留在这里，关掉应用也不会丢。</div>"
+      : '<div class="side-empty">工作集是空的。<br>先装一个 agent —— 点上面的「新建会话」，' +
+        "那里有各家的官网链接。</div>";
     $("runningCount").textContent = "0 个在跑";
     return;
   }
@@ -280,7 +285,12 @@ export function renderHistory(list: HistoryRow[], total: number, shown: number):
   $("histSummary").textContent = `${shown} / ${total}`;
   if (list.length === 0) {
     // 空数组与"还在加载"必须能区分开
-    $("histList").innerHTML = `<div class="hist-empty">没有匹配的会话</div>`;
+    // **「匹配」暗示「有数据但被你筛掉了」。** 一条都没有是另一回事，
+    // 而这一屏还无条件挂着五个 agent 筛选 chip，会助攻那个错觉。
+    $("histList").innerHTML =
+      total === 0
+        ? '<div class="hist-empty">还没有任何历史会话 —— 五个 agent 都没有留下会话记录</div>'
+        : '<div class="hist-empty">没有匹配的会话 —— 换个搜索词或取消 agent 筛选</div>';
     return;
   }
   $("histList").innerHTML = list

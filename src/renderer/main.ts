@@ -90,6 +90,8 @@ function paint(): void {
   // 一个终端都没有时才显示空态。有会话在跑还挂着"还没有会话在跑"是在撒谎。
   $("termEmpty").hidden = panes.size > 0;
   renderThemeCards(theme.themes, t.id, variant, theme.warnings);
+  // 「放进主题目录」得说清楚是哪个目录 —— 它在新机器上还不存在
+  $("themeDesc").textContent = `把自己的 JSON 放进 ${theme.themesDir} 即可新增`;
   setModeButtons(theme.mode);
   document.title = `agentory — ${t.name}`;
   selfCheck["theme"] = { id: t.id, variant, bg: colors.bg };
@@ -301,11 +303,17 @@ if (!agentory) {
   $("btnHistory").addEventListener("click", () => {
     openHistory();
     $("histList").innerHTML = '<div class="hist-empty">正在扫描…</div>';
-    void api.listSessions().then((r) => {
-      allSessions = r.sessions;
-      $("historyCount").textContent = String(allSessions.length);
-      refreshHistory();
-    });
+    void api
+      .listSessions()
+      .then((r) => {
+        allSessions = r.sessions;
+        $("historyCount").textContent = String(allSessions.length);
+        refreshHistory();
+      })
+      // 不接住的话，弹窗会永远停在「正在扫描…」
+      .catch((e: unknown) => {
+        $("histList").innerHTML = `<div class="hist-empty">扫描失败：${esc(cleanIpcError(String(e)))}</div>`;
+      });
   });
   $("histClose").addEventListener("click", closeHistory);
   $("histScrim").addEventListener("click", (e) => {
@@ -394,19 +402,32 @@ if (!agentory) {
     pickedAgent = null;
     $("newAgents").innerHTML = '<span class="desc">正在检测…</span>';
     syncNewGo();
-    void api.launchOptions().then((o) => {
-      paintAgentChips(o.agents);
-      $("newCwdList").innerHTML = o.folders
-        .map((f) => `<option value="${esc(f)}"></option>`)
-        .join("");
-      selfCheck["launch"] = {
-        agents: o.agents,
-        folders: o.folders.length,
-        probeMs: Math.round(o.probeMs),
-      };
-      ($("newCwd") as HTMLInputElement).focus();
-      syncNewGo();
-    });
+    void api
+      .launchOptions()
+      .then((o) => {
+        paintAgentChips(o.agents);
+        $("newCwdList").innerHTML = o.folders
+          .map((f) => `<option value="${esc(f)}"></option>`)
+          .join("");
+        selfCheck["launch"] = {
+          agents: o.agents,
+          folders: o.folders.length,
+          probeMs: Math.round(o.probeMs),
+        };
+        // **一个都没有时必须说清原因并给出路** —— 否则开始键永远灰着，
+        // 界面从头到尾不解释为什么，用户只能猜
+        $("newNoAgent").hidden = o.agents.length > 0;
+        ($("newCwd") as HTMLInputElement).focus();
+        syncNewGo();
+      })
+      // 不接住的话，弹窗会永远停在「正在检测…」
+      .catch((e: unknown) => {
+        $("newAgents").innerHTML = `<span class="desc">检测失败：${esc(cleanIpcError(String(e)))}</span>`;
+      });
+  });
+  $("newNoAgent").addEventListener("click", (e) => {
+    const u = (e.target as HTMLElement).closest<HTMLElement>("[data-url]")?.dataset["url"];
+    if (u) api.openUrl(u);
   });
   $("newClose").addEventListener("click", closeNew);
   $("newScrim").addEventListener("click", (e) => {
@@ -663,16 +684,20 @@ if (!agentory) {
   let diagText = "";
   $("diagRun").addEventListener("click", () => {
     $("diagStatus").textContent = "正在收集…";
-    void api.diagnosticsText().then((t) => {
-      diagText = t;
-      $("diagBox").textContent = t;
-      $("diagBox").hidden = false;
-      $("diagCopy").hidden = false;
-      // 有 ⚠ 就直说，别让人自己在文本里找
-      const bad = (t.match(/⚠/g) ?? []).length;
-      $("diagStatus").textContent = bad > 0 ? `${bad} 个问题` : "没发现问题";
-      selfCheck["diag"] = { 字数: t.length, 问题: bad };
-    });
+    void api
+      .diagnosticsText()
+      .then((d) => {
+        diagText = d.text;
+        $("diagBox").textContent = d.text;
+        $("diagBox").hidden = false;
+        $("diagCopy").hidden = false;
+        // **读结构化的条数，不去数渲染文本里的 ⚠** —— 从渲染结果里数符号是脆的
+        $("diagStatus").textContent = d.problems > 0 ? `${d.problems} 个问题` : "没发现问题";
+        selfCheck["diag"] = { 字数: d.text.length, 问题: d.problems };
+      })
+      .catch((e: unknown) => {
+        $("diagStatus").textContent = `收集失败：${cleanIpcError(String(e))}`;
+      });
   });
   $("diagCopy").addEventListener("click", () => {
     api.copy(diagText);
@@ -741,9 +766,13 @@ if (!agentory) {
     const on = st.checkEnabled;
     ($("verToggle") as HTMLButtonElement).textContent = on ? "已开启" : "关闭";
     $("verToggle").setAttribute("aria-pressed", String(on));
-    ($("verCheck") as HTMLButtonElement).disabled = !on || st.checking;
+    // 一个 agent 都没有时点它会「闪一下又回到还没查过」，看起来像坏了 —— 直接禁用
+    const nothing = st.rows.length === 0;
+    ($("verCheck") as HTMLButtonElement).disabled = !on || st.checking || nothing;
     const n = st.rows.filter((r) => r.hasUpdate).length;
-    $("verStatus").textContent = !on
+    $("verStatus").textContent = nothing
+      ? "本机没有可检查的 agent"
+      : !on
       ? "关闭时只显示本机版本，完全离线"
       : st.checking
         ? "正在查…"
@@ -790,7 +819,22 @@ if (!agentory) {
    * 事件会丢（实测：`齿轮有小圆点: false`）。所以启动时自己拉一次（缓存命中的常见情况），
    * 推送只负责「启动之后才查完」那一种。
    */
-  void api.agentsState().then((st) => setGearDot(st.rows.filter((r) => r.hasUpdate).length));
+  void api.agentsState().then((st) => {
+    setGearDot(st.rows.filter((r) => r.hasUpdate).length);
+    // 主区空态要说哪一套，取决于这台机器上到底有没有 agent。
+    // 这份数据启动时本来就要拉（齿轮小圆点要用），不额外花钱。
+    const none = st.rows.length === 0;
+    $("teNoAgent").hidden = !none;
+    $("teReady").hidden = none;
+    // 侧栏的空态跟着主区走，所以这一步之后要重画一次 ——
+    // 它很可能在这个 promise 回来之前就已经渲染过了
+    paint();
+    selfCheck["agents"] = { ...(selfCheck["agents"] as object), 装了: st.rows.length };
+  })
+  // 不接住的话，空态文案和齿轮小圆点会一起静默停在错的状态
+  .catch(() => {
+    selfCheck["agents"] = { 读不到: true };
+  });
   api.onAgentsUpdateAvailable(setGearDot);
 
   // ---------- 右键菜单 ----------

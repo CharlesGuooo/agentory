@@ -5,6 +5,8 @@ import builtinThemes from "../../shared/builtin-themes.json";
 import { loadThemes, type ModeSetting, type Theme } from "../../shared/theme";
 
 export interface ThemeState {
+  /** 自定义主题目录的绝对路径。界面要说清楚「放哪」，而它在新机器上还不存在。 */
+  themesDir: string;
   themes: Theme[];
   themeId: string;
   mode: ModeSetting;
@@ -104,6 +106,7 @@ function buildState(): ThemeState {
   return {
     themes: loaded.themes,
     themeId,
+    themesDir: themesDir(),
     mode: settings.mode,
     systemPrefersDark: nativeTheme.shouldUseDarkColors,
     warnings: [...user.warnings, ...loaded.warnings],

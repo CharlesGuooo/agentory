@@ -152,7 +152,9 @@ export function setupHarness(deps: HarnessDeps): void {
         "点格子装 / 卸。卸载是丢进系统回收站，可以自己恢复",
         skills.length > 0
           ? headRow("skill") + rowsOf(skills, skillCell as never)
-          : '<p class="desc">没有匹配的 skill</p>',
+          : matrix.skills.length === 0
+            ? '<p class="desc">五个 agent 里一个 skill 都没有</p>'
+            : '<p class="desc">没有匹配的 skill —— 换个搜索词</p>',
       ) +
       section(
         "MCP",
@@ -161,7 +163,9 @@ export function setupHarness(deps: HarnessDeps): void {
           ? '<p class="desc">项目级 MCP 只有 claude 和 grok 支持，这一刀不读</p>'
           : mcp.length > 0
             ? headRow("服务器") + rowsOf(mcp, mcpCell as never)
-            : '<p class="desc">没有匹配的 MCP</p>',
+            : matrix.mcp.length === 0
+              ? '<p class="desc">一个 MCP 服务器都没有配</p>'
+              : '<p class="desc">没有匹配的 MCP —— 换个搜索词</p>',
       );
 
     $("hxSummary").textContent =
@@ -176,10 +180,17 @@ export function setupHarness(deps: HarnessDeps): void {
 
   function load(): void {
     $("hxBody").innerHTML = '<p class="desc">正在读…</p>';
-    void api.harnessScan(scope).then((m) => {
-      matrix = m;
-      render();
-    });
+    void api
+      .harnessScan(scope)
+      .then((m) => {
+        matrix = m;
+        render();
+      })
+      // **没有这个 catch，一次意外 rejection 就让面板永远停在「正在读…」** ——
+      // 那才是真正会「白屏」的入口，不是空数据
+      .catch((e: unknown) => {
+        $("hxBody").innerHTML = `<p class="desc">读不出来：${esc(String(e))}</p>`;
+      });
   }
 
   $("btnHarness").addEventListener("click", () => {

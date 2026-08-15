@@ -220,7 +220,8 @@ body { display: grid; grid-template-rows: var(--titlebar-h) 1fr; }
 
 .field { display: flex; flex-direction: column; gap: 8px; }
 .field > label { color: var(--c-fg); font-weight: 600; font-size: var(--t); }
-.field .desc { color: var(--c-dim); font-size: var(--t-sm); margin-top: -4px; }
+/* 不限定在 .field 下 —— harness 面板里的说明文字也要拿到这条 */
+.desc { color: var(--c-dim); font-size: var(--t-sm); margin-top: -4px; }
 .field .warn { color: var(--c-dim); font-size: var(--t-sm); }
 .field .warn[hidden] { display: none; }
 

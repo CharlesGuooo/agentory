@@ -89,3 +89,14 @@
   font-style: normal; font-size: var(--t-xs); font-weight: 700;
   color: var(--c-accent); margin-left: 2px;
 }
+
+/* 「一个 agent 都没检测到」时的出路。只在新建会话弹窗里出现。 */
+.no-agent {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px; margin-top: 4px;
+  border: 1px solid var(--c-line); border-radius: var(--r);
+  background: var(--c-bg);
+}
+.no-agent p { margin: 0; }
+.no-agent .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.no-agent[hidden] { display: none; }
