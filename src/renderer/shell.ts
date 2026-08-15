@@ -358,6 +358,15 @@ export const closeHistory = (): void => {
 };
 export const historyOpen = (): boolean => !$("histScrim").hidden;
 
+export const openHarness = (): void => {
+  $("hxScrim").hidden = false;
+  ($("hxSearch") as HTMLInputElement).focus();
+};
+export const closeHarness = (): void => {
+  $("hxScrim").hidden = true;
+};
+export const harnessOpen = (): boolean => !$("hxScrim").hidden;
+
 /**
  * 剥掉 Electron 给 IPC 拒绝加的包装文本。
  *

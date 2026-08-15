@@ -29,6 +29,7 @@
     "electron": "43.4.0",
     "electron-builder": "^26.15.3",
     "electron-vite": "^4.0.1",
+    "smol-toml": "^1.8.0",
     "typescript": "^5.9.3",
     "vite": "^7.1.13",
     "vitest": "^3.2.4"

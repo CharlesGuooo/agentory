@@ -1,0 +1,91 @@
+/* ---------- Skills 与 MCP 面板 ---------- */
+
+.hx-scope {
+  display: flex; align-items: center; gap: 6px; flex: none;
+  color: var(--c-dim); font-size: var(--t-sm); white-space: nowrap;
+}
+.hx-scope select { width: 200px; }
+
+/* 状态条。**先于格子存在** —— 没有它，一个空格子会被读成「没配」，
+   而它其实可能是「读不出来」或「这个 agent 根本不支持」。 */
+.hx-sources {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 0 12px 10px; border-bottom: 1px solid var(--c-line); flex: none;
+}
+.hx-src {
+  font-size: var(--t-xs); color: var(--c-dim); padding: 2px 7px;
+  border: 1px solid var(--c-line); border-radius: var(--r-pill);
+  white-space: nowrap;
+}
+.hx-src b { font-variant-numeric: tabular-nums; font-weight: 600; }
+.hx-src.ok { color: var(--c-fg); }
+.hx-src.bad { color: var(--c-accent); border-color: var(--c-accent); }
+.hx-src.dim { opacity: 0.6; }
+
+.hx-body { flex: 1 1 auto; overflow: auto; padding: 10px 12px 16px; }
+
+/* 区块包裹层：让每个粘性表头的定位上下文各自独立，否则两个表头会叠在一起 */
+.hx-sec { display: block; }
+.hx-sec + .hx-sec { margin-top: 18px; }
+
+.hx-h {
+  margin: 0 0 6px; font-size: var(--t-md); font-weight: 600; color: var(--c-fg);
+  display: flex; align-items: baseline; gap: 10px;
+}
+.hx-h small { font-size: var(--t-xs); font-weight: 400; color: var(--c-dim); }
+
+/* **列宽写死。** 每一行都是独立的 grid 容器，用 auto 列宽的话每行各算各的，
+   格子就会在几十行里落到不同的横坐标上（Agent 版本表踩过这个坑）。 */
+/* 名字列**封顶**。给 1fr 的话它会撑满 900px 的面板，眼睛要横跨大半个屏幕
+   才能从名字找到格子 —— 这一块是拿来扫的，名字和格子必须挨着。 */
+.hx-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) repeat(5, 84px);
+  align-items: center; gap: 4px; padding: 3px 6px; border-radius: var(--r-sm);
+  /* 整行封顶：不封的话名字列会撑满 900px 的面板，名字和格子之间空出一大片，
+     眼睛要横跨过去才能对上号。这一块是拿来扫的。 */
+  max-width: 760px;
+}
+.hx-row:not(.hx-head):hover { background: var(--c-sel); }
+.hx-name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--t-sm); color: var(--c-fg);
+}
+.hx-cell { display: flex; justify-content: center; align-items: center; }
+
+.hx-head {
+  position: sticky; top: 0; z-index: 1; background: var(--c-chrome);
+  /* 上方留一点，避免和上一区块最后一行贴在一起 */
+  padding-top: 4px;
+  border-bottom: 1px solid var(--c-line); border-radius: 0;
+  padding-bottom: 5px; margin-bottom: 3px;
+}
+.hx-head .hx-name, .hx-head .hx-cell {
+  font-size: var(--t-xs); color: var(--c-dim); text-transform: lowercase;
+}
+
+/* skill 格子：可点的开关 */
+.hx-box {
+  width: 20px; height: 20px; border-radius: var(--r-sm);
+  border: 1px solid var(--c-line); background: none;
+  color: transparent; font-size: var(--t-xs); line-height: 1;
+  display: grid; place-items: center; cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.hx-box:hover:not(:disabled) { border-color: var(--c-accent); }
+.hx-box:active:not(:disabled) { transform: translateY(0.5px); }
+.hx-box:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+.hx-box.on { background: var(--c-accent); border-color: var(--c-accent); color: var(--c-bg); }
+.hx-box:disabled { opacity: 0.3; cursor: default; }
+
+/* MCP 格子：五种状态各有各的记号，都不是空白 */
+.hx-on { color: var(--c-accent); font-size: var(--t-sm); }
+.hx-on.off { color: var(--c-dim); }
+/* 「配了但没生效」和「没配」必须一眼分得开 */
+.hx-no { color: var(--c-dim); opacity: 0.35; }
+.hx-na { color: var(--c-dim); opacity: 0.5; }
+.hx-unk { color: var(--c-accent); font-weight: 600; }
+/* 配置里存着明文凭证。用强调色 —— 主题只有一套 accent，不为这一个标记新增色槽（D-14） */
+.hx-key {
+  font-style: normal; font-size: var(--t-xs); font-weight: 700;
+  color: var(--c-accent); margin-left: 2px;
+}

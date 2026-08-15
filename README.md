@@ -52,6 +52,19 @@ be switched off.
 is not caution for its own sake: an early probe of ours pressed Enter on Codex's "update
 now?" dialog and uninstalled it.
 
+**Shows which skills and MCP servers each agent has, and moves skills between them.**
+One row per skill, one column per agent, one click to install or uninstall. Installing
+copies the directory; uninstalling moves it to the Recycle Bin, so it is always
+recoverable and never asks you to confirm. Both global and per-project scopes.
+
+MCP servers are **shown but not edited** — the same matrix marks which are configured,
+which are switched off in the config, which agent does not support MCP at all, and which
+configs store a credential in plaintext. Editing those files means format-preserving
+writes and racing the agent that owns them; that is a different risk class.
+
+This never reads a credential's value — only field names. Nothing is cached, so nothing
+is written to a second place.
+
 ### Reading a session's working directory
 
 Two of the five agents encode the project path into a directory name lossily, so
@@ -100,7 +113,8 @@ vacuously.
 ## Status
 
 Working: session index, resume, workspace persistence, favourites, session summaries,
-agent version checks, themes, keyboard shortcuts, terminal-bell notifications.
+agent version checks, a cross-agent skills/MCP matrix with skill install/uninstall,
+themes, keyboard shortcuts, terminal-bell notifications.
 
 Not built yet:
 

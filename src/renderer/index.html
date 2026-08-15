@@ -63,6 +63,7 @@
         </div>
         <div class="side-foot">
           <span id="runningCount">—</span>
+          <button class="gear" id="btnHarness" type="button" aria-label="Skills 与 MCP" title="Skills 与 MCP">⧉</button>
           <button class="gear" id="gear" type="button" aria-label="设置" title="设置">⚙</button>
         </div>
       </aside>
@@ -220,6 +221,31 @@
           <div class="chips" id="histAgents"></div>
         </div>
         <div class="hist-list" id="histList"></div>
+      </div>
+    </div>
+
+    <!--
+      Skills 与 MCP。独立弹窗而不是设置里的第五块：矩阵是张宽表，
+      塞进 720px 单列纵向流会把「主题」推出首屏。
+    -->
+    <div class="scrim" id="hxScrim" hidden>
+      <div class="panel panel-wide" role="dialog" aria-modal="true" aria-label="Skills 与 MCP">
+        <div class="panel-head">
+          <h2>Skills 与 MCP</h2>
+          <span class="subtle" id="hxSummary"></span>
+          <button class="close" id="hxClose" type="button" aria-label="关闭">✕</button>
+        </div>
+        <div class="hist-tools">
+          <label class="hx-scope">
+            作用域
+            <select id="hxScope" class="search"></select>
+          </label>
+          <input id="hxSearch" class="search" type="search" placeholder="搜索 skill 或 MCP 名字…"
+                 autocomplete="off" />
+        </div>
+        <!-- 状态条先于格子 —— 没有它，空格子会被读成「没配」而不是「读不到」 -->
+        <div class="hx-sources" id="hxSources"></div>
+        <div class="hx-body" id="hxBody"></div>
       </div>
     </div>
 

@@ -1,5 +1,7 @@
 import { clipboard, contextBridge, ipcRenderer, shell } from "electron";
 import type { AgentsState } from "../main/agents/ipc";
+import type { SkillActionResult } from "../main/harness/ipc";
+import type { HarnessMatrix, Scope } from "../main/harness/types";
 import type { LaunchOptions, LaunchRequest, ResumeRequest } from "../main/sessions/ipc";
 import type { AgentId } from "../main/sessions/types";
 import type { SummaryState, SummaryText } from "../main/summary/ipc";
@@ -130,6 +132,22 @@ const api = {
     ipcRenderer.on("agents:update-available", h);
     return () => void ipcRenderer.off("agents:update-available", h);
   },
+
+  /**
+   * Harness（skills + MCP）。**纯本地文件读，零网络、零进程、零缓存。**
+   * skills 可装可卸；MCP 只读 —— 改配置文件的风险是另一个数量级。
+   */
+  harnessScan: (scope: Scope): Promise<HarnessMatrix> => ipcRenderer.invoke("harness:scan", scope),
+  harnessInstallSkill: (
+    source: string,
+    agent: AgentId,
+    scope: Scope,
+    name: string,
+  ): Promise<SkillActionResult> =>
+    ipcRenderer.invoke("harness:installSkill", { source, agent, scope, name }),
+  /** 卸载 = 丢进系统回收站，用户可自行恢复。 */
+  harnessUninstallSkill: (path: string, scope: Scope): Promise<SkillActionResult> =>
+    ipcRenderer.invoke("harness:uninstallSkill", { path, scope }),
 
   /** 右键菜单要用的两件小事。`clipboard` / `shell` 在 preload 里可直接用，不必绕一趟 IPC。 */
   copy: (text: string): void => clipboard.writeText(text),

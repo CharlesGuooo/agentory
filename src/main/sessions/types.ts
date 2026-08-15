@@ -1,6 +1,16 @@
 export type AgentId = "claude" | "codex" | "opencode" | "pi" | "grok";
 
 /**
+ * 五个 agent，顺序固定 —— 界面上的排列不该每次刷新都变。
+ *
+ * 放在这个纯类型文件里是因为它零 import，渲染层可以安全地拿（不会被连带拉进 `node:fs`）。
+ * 仓库里另有 6 处同样的字面量（`favorites/store.ts`、`workspace/store.ts`、
+ * `summary/cache.ts`、`agents/installed.ts`、`sessions/launch.ts`、`renderer/shell.ts`），
+ * 那些不属于这一刀的范围，改动时可以逐步换过来。
+ */
+export const ALL_AGENTS: AgentId[] = ["claude", "codex", "opencode", "pi", "grok"];
+
+/**
  * 一个会话在索引里的样子。
  *
  * 三条来自实测的硬约束（见 openspec 的 `session-index` 规格）：

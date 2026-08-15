@@ -7,6 +7,7 @@ import type { ThemeState } from "../main/theme/service";
 import { entryCommand } from "../main/workspace/command";
 import { favoriteKey, type FavoriteEntry } from "../main/favorites/model";
 import { entryKey, type WorkspaceEntry } from "../main/workspace/model";
+import { setupHarness } from "./harness";
 import { closeMenu, menuOpen, showMenu, type MenuItem } from "./menu";
 import { inTextField, resolve } from "./shortcuts";
 import type { AgentoryApi } from "../preload/index";
@@ -655,6 +656,34 @@ if (!agentory) {
       `正在摘要 ${p.done}/${p.total}` +
       (p.failed ? ` · 失败 ${p.failed}` : "") +
       (p.last ? ` · ${p.last.slice(0, 30)}` : "");
+  });
+
+  // ---------- Skills 与 MCP（P2-b） ----------
+
+  setupHarness({
+    api,
+    /**
+     * 作用域候选。**第一项是种子** —— 当前 tab 的目录。
+     * 这些状态住在这里，所以由这里提供，面板自己不去碰它们。
+     */
+    scopes: () => {
+      const seen = new Set<string>();
+      const out: { cwd: string; label: string }[] = [];
+      const add = (cwd: string): void => {
+        if (!cwd || seen.has(cwd)) return;
+        seen.add(cwd);
+        // 两种分隔符都要认 —— 只写 / 的话 Windows 路径切不开，下拉里会显示整条绝对路径
+        out.push({ cwd, label: cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd });
+      };
+      const active = views.find((v) => v.key === activeKey);
+      if (active) add(active.cwd);
+      for (const v of views) add(v.cwd);
+      for (const f of favorites) add(f.cwd);
+      return out;
+    },
+    note: (v) => {
+      selfCheck["harness"] = v;
+    },
   });
 
   // ---------- Agent 版本（P2-a：只显示，不代劳） ----------

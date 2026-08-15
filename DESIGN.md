@@ -590,6 +590,79 @@ claude 走 `homepage`、codex / pi 走 `repository.url`，都能推出 GitHub re
 
 ---
 
+### D-16 · Harness：skills 可装可卸，MCP 只读（`add-harness`，2026-08-15）
+
+用户装了哪些 skill、哪个 agent 有哪个、MCP 配了什么 —— 这些原本一个都看不到。
+**证据在用户自己机器上**：他写了 `~/.claude/scripts/move-skills.ps1` 和
+`~/.opencode/verify-skills.js` 两个脚本手工同步。四份 skills 字节相同、mtime 相同，
+**不是软链** —— 改一处不会传播。这一刀把那两个脚本变成界面。
+
+#### 范围的判据是**可移植性**，不是「有没有用」
+
+因为要做的是「一键装到另一个 agent」：
+
+| | 能不能搬 | 支持数 | 结论 |
+|---|---|---|---|
+| **skills** | **完全能** —— Agent Skills 规范 2025-12-18 发布，48 小时内 VS Code / ChatGPT / Codex CLI 全接，2026-06 约 40 个产品读同一份 `SKILL.md` | **5/5** | **完整装卸** |
+| **MCP** | 半能 —— 四套字段名互译 + 密钥 | 4/5 | **只读** |
+| **hooks** | **几乎不能** —— hook 是绑在某个 agent 事件名上的 shell 命令 | 3/5 | **不做** |
+
+MCP 的趋势：**没死，但赢的地方不在本地**。它的优势是 per-user OAuth、多租户、企业审计；
+token 成本是 CLI 的 32 倍（简单任务 44,026 vs 1,365）。本地场景 CLI + Skills 在赢。
+本机两处旁证：pi 的 README 写着 `No MCP. Build CLI tools with READMEs (see Skills)`；
+grok 配置里的中文注释说关掉 claude skills 继承是因为空跑就吃 18,647 token。
+
+#### 矩阵的格子就是开关
+
+不另做「plugin 管理界面」。skill 格子可点（装 = 复制目录、卸 = 丢系统回收站），
+MCP 格子只读。读和写是同一张表、同一个数据层。
+
+**五种格子状态，每种只有一个意思**（`●` 有 / `●●` 多处定义 / `○` 写着停用 /
+`·` 没有 / `—` 不支持 / `?` 读不出来）—— 全渲染成空白就是撒谎。
+`disabledInConfig` 因此是 `boolean | null`：**「没说」和「说了开」是两件事。**
+
+#### 秘密靠结构挡
+
+harness 配置是这台机器上密钥密度最高的一类文件（claude 2 处、opencode 3 处明文凭证）。
+
+`McpEntry` 有 `envNames: string[]`，**没有** `env: Record<string,string>` ——
+类型上装不下秘密（照 D-W2）。读取器只 `Object.keys()`。`url` 丢掉 query 和 fragment。
+**零缓存、一个文件都不写** —— 缓存文件是秘密唯一可能被持久化到第二个地方的路径，
+这条被做成了断言（mock `writeFileSync` 断言零次调用）。
+
+> 「明文密钥」的判据被实测修正过一次：第一版「任何非占位符字符串值」把
+> `env.BLENDER_HOST = "localhost"` 和 14 个 `NODE_REPL_*` 全标成密钥（31 处大半误报）。
+> **有值不等于是密钥。** 改成「字段名像凭证 **且** 值不是环境变量引用」→ 31 → **11 处，零误报**。
+
+#### 卸载不删文件
+
+`shell.trashItem()` 丢进系统回收站 —— 用户能自己恢复，所以**不需要确认弹窗**。
+这是「绝不替用户销毁记录」在这个功能上的形态，也是平台能力优先于手搓的又一次应用。
+真机验证：回收站里确认存在 `action-first`，原位置 `~/.grok/skills`。
+
+#### TOML：破例加一个依赖，但没打破单依赖
+
+Node 没有 TOML（不像 JSON 有 `JSON.parse`），所以「选平台能力而非依赖」这条先例
+在这里**没有适用条件**。手写窄解析器的错误几乎全是静默的 —— 本机今天就有两个必错构造
+（字面串 vs 基本串的转义、值后注释 vs URL 里的 `#`），都是「看起来对」。
+
+`smol-toml` 放 **devDependencies**：`electron-vite` 只 external `dependencies`
+（`electron-vite/dist/index.js:352`），所以它被打进 bundle，**运行时依赖仍只有 node-pty**。
+
+> **D-15「不抓不解析 changelog」不适用于 TOML** —— 那条拒绝的是「没有规范、
+> 内容无法校验、随时改版式的自由文本」，TOML 一条都不占（有 1.0 规范、有一致性测试、
+> 由 `toml_edit` 程序生成）。这个项目里真正与 changelog 同构的是 `SKILL.md` 的
+> **YAML frontmatter**（真文件里 `description:` 用 `>-` 折叠标量跨 9 行），
+> 所以 v1 不读 frontmatter。
+
+#### 明确不做
+
+- **MCP 的装卸与开关** —— 四套字段互译 + 保格式写入 + 竞态
+- **hooks**、**策展市场 / 从 URL 安装**（后者要的是供应商责任链，不是代码）
+- **读 frontmatter**、**插件带的 skill 根**
+
+---
+
 ### D-W1 · 工作集条目只存 4 个字段，不缓存索引信息
 
 `{agent, sessionId, cwd, addedAt}`。**不存** `lastActivity` / `nativeTitle` / `cwdExists`。

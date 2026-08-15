@@ -437,6 +437,110 @@ async function smokeVersions(win: BrowserWindow): Promise<void> {
   );
 }
 
+/**
+ * Skills 与 MCP 面板：读矩阵 → 真装一个 → 真卸掉它。
+ *
+ * **装卸走的是界面上真正的那条路径**（点格子），不是直接调 IPC ——
+ * 中间任何一环断了（选择器写错、事件没绑上、忙标志卡住）这条冒烟都会红。
+ */
+async function smokeHarness(win: BrowserWindow): Promise<void> {
+  await run(win, 'document.getElementById("btnHarness").click()');
+  await wait(2000);
+  say(
+    "smoke-hx",
+    await run(
+      win,
+      `(() => {
+        const rows = document.querySelectorAll("#hxBody .hx-row:not(.hx-head)").length;
+        const srcs = [...document.querySelectorAll("#hxSources .hx-src")].map(s => s.textContent.trim());
+        return JSON.stringify({
+          打开了: !document.getElementById("hxScrim").hidden,
+          概要: document.getElementById("hxSummary").textContent,
+          行数: rows,
+          作用域选项: document.getElementById("hxScope").options.length,
+          当前作用域: document.getElementById("hxScope").selectedOptions[0]?.textContent,
+          状态条: srcs,
+          可点的格子: document.querySelectorAll("#hxBody .hx-box").length,
+          MCP记号: [...new Set([...document.querySelectorAll("#hxBody .hx-on,#hxBody .hx-no,#hxBody .hx-na,#hxBody .hx-unk")].map(e => e.textContent.trim()))],
+        });
+      })()`,
+    ),
+  );
+
+  // 切到本仓库自己的目录，验项目级作用域（它有 11 个项目级 skill）
+  await run(win, `(() => {
+    const s = document.getElementById("hxScope");
+    const opt = [...s.options].find(o => o.value.includes("multi_agents_desktop_app"));
+    if (opt) { s.value = opt.value; s.dispatchEvent(new Event("change")); }
+  })()`);
+  await wait(2500);
+  say(
+    "smoke-hx-project",
+    await run(
+      win,
+      `JSON.stringify({
+        当前作用域: document.getElementById("hxScope").selectedOptions[0]?.textContent,
+        概要: document.getElementById("hxSummary").textContent,
+        行数: document.querySelectorAll("#hxBody .hx-row:not(.hx-head)").length,
+      })`,
+    ),
+  );
+  // 切回全局再做装卸
+  await run(win, `(() => {
+    const s = document.getElementById("hxScope"); s.value = ""; s.dispatchEvent(new Event("change"));
+  })()`);
+  await wait(2500);
+
+  // 找一个「有的 agent 有、grok 没有」的 skill，装到 grok 再卸掉
+  const before = (await run(
+    win,
+    `(() => {
+      const box = [...document.querySelectorAll('#hxBody .hx-box[data-agent="grok"]')]
+        .find(b => !b.classList.contains("on") && b.dataset.from);
+      if (!box) return JSON.stringify({ 找到目标: false });
+      window.__hxTarget = box.dataset.skill;
+      return JSON.stringify({ 找到目标: true, skill: box.dataset.skill, 来源: box.dataset.from });
+    })()`,
+  )) as string;
+  say("smoke-hx-target", before);
+
+  await run(
+    win,
+    `document.querySelector('#hxBody .hx-box[data-agent="grok"][data-skill="' + window.__hxTarget + '"]').click()`,
+  );
+  await wait(3000);
+  say(
+    "smoke-hx-install",
+    await run(
+      win,
+      `JSON.stringify({
+        装上了: document.querySelector('#hxBody .hx-box[data-agent="grok"][data-skill="' + window.__hxTarget + '"]').classList.contains("on"),
+        grok状态条: [...document.querySelectorAll("#hxSources .hx-src")].map(s=>s.textContent.trim()).find(t=>t.startsWith("grok skills")),
+      })`,
+    ),
+  );
+
+  // 再点一次 = 丢进回收站
+  await run(
+    win,
+    `document.querySelector('#hxBody .hx-box[data-agent="grok"][data-skill="' + window.__hxTarget + '"]').click()`,
+  );
+  await wait(3000);
+  say(
+    "smoke-hx-uninstall",
+    await run(
+      win,
+      `JSON.stringify({
+        卸掉了: !document.querySelector('#hxBody .hx-box[data-agent="grok"][data-skill="' + window.__hxTarget + '"]').classList.contains("on"),
+        grok状态条: [...document.querySelectorAll("#hxSources .hx-src")].map(s=>s.textContent.trim()).find(t=>t.startsWith("grok skills")),
+        概要: document.getElementById("hxSummary").textContent,
+      })`,
+    ),
+  );
+  await run(win, 'document.getElementById("hxClose").click()');
+  await wait(300);
+}
+
 /** 摆出各个界面状态并逐一截图。 */
 async function smokeShots(win: BrowserWindow, dir: string): Promise<void> {
   mkdirSync(dir, { recursive: true });
@@ -475,6 +579,19 @@ async function smokeShots(win: BrowserWindow, dir: string): Promise<void> {
   await wait(500);
   await shoot(win, dir, "05-快捷键");
   await run(win, 'document.getElementById("keysClose").click()');
+  await wait(300);
+  await run(win, 'document.getElementById("btnHarness").click()');
+  await wait(2500);
+  await shoot(win, dir, "06-Skills与MCP");
+  // MCP 区在下面，五种状态记号都在那儿 —— 单独截一张
+  await run(win, `(() => {
+    const h = [...document.querySelectorAll("#hxBody .hx-h")].find(e => e.textContent.startsWith("MCP"));
+    h?.scrollIntoView({ block: "start" });
+  })()`);
+  await wait(500);
+  await shoot(win, dir, "07-MCP矩阵");
+  await run(win, 'document.getElementById("hxClose").click()');
+  await wait(300);
   await wait(400);
   await run(win, 'document.getElementById("btnNew").click()');
   await wait(2000);
@@ -658,6 +775,7 @@ export function attachSmoke(win: BrowserWindow, quit: () => void): void {
       if (env("START_MEMBER") === "1") await smokeStartMember(win);
       if (env("SUMMARY") === "1") await smokeSummary(win);
       if (env("VERSIONS") === "1") await smokeVersions(win);
+      if (env("HARNESS") === "1") await smokeHarness(win);
       if (env("KEYS") === "1") await smokeKeys(win);
       if (env("HISTPERF") === "1") await smokeHistPerf(win);
       if (env("BELL") === "1") await smokeBell(win);
