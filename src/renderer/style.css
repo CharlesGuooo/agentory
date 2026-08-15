@@ -180,6 +180,13 @@ body { display: grid; grid-template-rows: var(--titlebar-h) 1fr; }
 }
 .gear:hover { background: var(--c-sel); border-color: var(--c-line); color: var(--c-fg); }
 .gear:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+/* 有 agent 可更新时的小圆点。不打断你，但你不打开设置也知道有事。
+   放右上角、用强调色，和侧栏里表示「有铃声」的那个点是同一套语言。 */
+.gear { position: relative; }
+.gear.has-update::after {
+  content: ""; position: absolute; top: 3px; right: 3px; width: 6px; height: 6px;
+  border-radius: var(--r-pill); background: var(--c-accent);
+}
 
 .term-host { background: var(--c-bg); padding: 8px 10px; min-width: 0; overflow: hidden; position: relative; }
 
@@ -474,3 +481,33 @@ body { display: grid; grid-template-rows: var(--titlebar-h) 1fr; }
 .peek[hidden] { display: none; }
 
 .side-empty { padding: 20px 14px; color: var(--c-dim); font-size: var(--t-sm); line-height: 1.7; }
+
+/* ---------- 设置里的 Agent 版本表 ---------- */
+.agents { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+/* **四列必须写死宽度。**
+   每一行都是独立的 grid 容器，用 auto 列宽的话每行各算各的，
+   「看更新说明」就会在五行里落到四个不同的横坐标上（实测截图确认过）。
+   这一块是拿来扫的，列不齐就白做。 */
+.ver-row {
+  display: grid; grid-template-columns: 84px 152px minmax(0, 1fr) 96px;
+  align-items: center; gap: 10px; padding: 6px 8px;
+  border-radius: var(--r-sm);
+}
+.ver-row:hover { background: var(--c-sel); }
+.ver-name { color: var(--c-fg); }
+.ver-num {
+  font-family: var(--mono); font-size: var(--t-sm); color: var(--c-dim);
+  font-variant-numeric: tabular-nums;
+}
+.ver-act { min-width: 0; display: flex; }
+.ver-act:last-child { justify-content: flex-end; }
+.ver-new { color: var(--c-accent); }
+.ver-cmd {
+  font-family: var(--mono); font-size: var(--t-xs); color: var(--c-dim);
+  background: var(--c-bg); border: 1px solid var(--c-line); border-radius: var(--r-sm);
+  padding: 2px 6px; cursor: pointer; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ver-cmd:hover { color: var(--c-fg); border-color: var(--c-accent); }
+.ver-cmd.copied { color: var(--c-accent); border-color: var(--c-accent); }
+.btn-mini { padding: 3px 8px; font-size: var(--t-xs); flex: none; }

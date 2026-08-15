@@ -1,4 +1,5 @@
 import { clipboard, contextBridge, ipcRenderer, shell } from "electron";
+import type { AgentsState } from "../main/agents/ipc";
 import type { LaunchOptions, LaunchRequest, ResumeRequest } from "../main/sessions/ipc";
 import type { AgentId } from "../main/sessions/types";
 import type { SummaryState, SummaryText } from "../main/summary/ipc";
@@ -113,6 +114,21 @@ const api = {
     const h = (_e: unknown, p: { done: number; total: number; ok: number; failed: number; last: string }): void => cb(p);
     ipcRenderer.on("summary:progress", h);
     return () => void ipcRenderer.off("summary:progress", h);
+  },
+
+  /**
+   * Agent 版本（P2-a）。**只显示，不代劳** —— 更新命令给用户复制，我们绝不执行它。
+   * 读本机版本是纯文件读；查最新版会出网，但只发包名（D-8 第三档）。
+   */
+  agentsState: (): Promise<AgentsState> => ipcRenderer.invoke("agents:state"),
+  agentsSetCheckEnabled: (v: boolean): Promise<AgentsState> =>
+    ipcRenderer.invoke("agents:setCheckEnabled", v),
+  agentsCheck: (): Promise<AgentsState> => ipcRenderer.invoke("agents:check"),
+  agentsOpenReleases: (url: string): Promise<void> => ipcRenderer.invoke("agents:openReleases", url),
+  onAgentsUpdateAvailable: (cb: (n: number) => void): (() => void) => {
+    const h = (_e: unknown, n: number): void => cb(n);
+    ipcRenderer.on("agents:update-available", h);
+    return () => void ipcRenderer.off("agents:update-available", h);
   },
 
   /** 右键菜单要用的两件小事。`clipboard` / `shell` 在 preload 里可直接用，不必绕一趟 IPC。 */

@@ -34,13 +34,23 @@ because restarting an agent session costs tokens.
 
 **Summarises each session.** One sentence saying what the session was about, so you can
 tell two `a3f9c1e2` apart. This is **off by default and needs your own DeepSeek API key** —
-turning it on is the only thing in agentory that sends anything off your machine, so it is
-a deliberate, separate switch. Before you enable it, the settings panel will show you the
-**exact text that would be sent** for one of your own sessions.
+it is the only feature that sends **your content** anywhere, so it is a deliberate,
+separate switch. Before you enable it, the settings panel will show you the **exact text
+that would be sent** for one of your own sessions.
 
 Tool output is excluded structurally — the payload only keeps `text` parts, and your source
 code lives in tool results. With summaries off, every row falls back to the first
 informative message from the session, which is readable for about 90% of them.
+
+**Shows each agent's version, and whether a newer one exists.** Reading the installed
+version is a pure file read — agentory never starts an agent process to ask. Checking for
+a newer version does reach the network (npm's registry, and x.ai for Grok), but the only
+thing sent is a package name; no session content is involved. It is on by default and can
+be switched off.
+
+**agentory never updates an agent for you.** It shows you the command and you run it. That
+is not caution for its own sake: an early probe of ours pressed Enter on Codex's "update
+now?" dialog and uninstalled it.
 
 ### Reading a session's working directory
 
@@ -90,7 +100,7 @@ vacuously.
 ## Status
 
 Working: session index, resume, workspace persistence, favourites, session summaries,
-themes, keyboard shortcuts, terminal-bell notifications.
+agent version checks, themes, keyboard shortcuts, terminal-bell notifications.
 
 Not built yet:
 
@@ -106,6 +116,9 @@ Known limitations:
   as corpora grow.
 - Summaries skip OpenCode sessions, because OpenCode already stores a model-generated
   title that is better than what we would produce.
+- The "what's new" link is derived from the package's own registry metadata, so it is
+  missing for OpenCode (whose metadata lists neither a repository nor a homepage) and for
+  Grok (not distributed through npm). Those rows still show versions and an update command.
 
 ## Keyboard shortcuts
 

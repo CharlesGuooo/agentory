@@ -385,6 +385,58 @@ async function shoot(win: BrowserWindow, dir: string, name: string): Promise<voi
   say("smoke-shot", `${name} → ${img.getSize().width}×${img.getSize().height}`);
 }
 
+/**
+ * Agent 版本：开设置 → 读表 → 复制更新命令。
+ *
+ * **要证明的第一件事是「没起 agent 进程」** —— 这个项目最贵的一次事故就是探针
+ * 碰了 agent 的 TUI。所以这里同时记下耗时：起五个进程不可能是这个数量级。
+ */
+async function smokeVersions(win: BrowserWindow): Promise<void> {
+  // 小圆点必须在点齿轮**之前**读 —— 点开设置就当你看过了，它会被清掉
+  say(
+    "smoke-ver-dot",
+    await run(
+      win,
+      `JSON.stringify({
+        齿轮有小圆点: document.getElementById("gear").classList.contains("has-update"),
+        齿轮提示: document.getElementById("gear").title,
+      })`,
+    ),
+  );
+  await run(win, 'document.getElementById("gear").click()');
+  await wait(1500);
+  say(
+    "smoke-ver",
+    await run(
+      win,
+      `(() => {
+        const rows = [...document.querySelectorAll("#verRows .ver-row")].map((r) => ({
+          agent: r.querySelector(".ver-name").textContent,
+          版本: r.querySelector(".ver-num").textContent.replace(/\s+/g, " ").trim(),
+          有更新命令: !!r.querySelector(".ver-cmd"),
+          有说明链接: !!r.querySelector("[data-rel]"),
+        }));
+        return JSON.stringify({
+          开关: document.getElementById("verToggle").getAttribute("aria-pressed"),
+          状态: document.getElementById("verStatus").textContent,
+          行数: rows.length,
+          行: rows,
+        });
+      })()`,
+    ),
+  );
+  // 点一下更新命令 —— 只能复制，绝不代跑
+  await run(win, 'document.querySelector("#verRows .ver-cmd")?.click()');
+  await wait(400);
+  say(
+    "smoke-ver-copy",
+    await run(
+      win,
+      'JSON.stringify({ 复制反馈: !!document.querySelector("#verRows .ver-cmd.copied") })',
+    ),
+  );
+}
+
 /** 摆出各个界面状态并逐一截图。 */
 async function smokeShots(win: BrowserWindow, dir: string): Promise<void> {
   mkdirSync(dir, { recursive: true });
@@ -412,6 +464,10 @@ async function smokeShots(win: BrowserWindow, dir: string): Promise<void> {
   await shoot(win, dir, "03b-设置-摘要展开");
   await run(win, 'document.getElementById("sumToggle").click()');
   await wait(600);
+  // Agent 版本表单独截一张 —— 它在设置里比较靠下，上面那张截不全
+  await run(win, 'document.getElementById("verRows").scrollIntoView({block:"center"})');
+  await wait(400);
+  await shoot(win, dir, "03c-设置-Agent版本");
 
   await run(win, 'document.getElementById("settingsClose").click()');
   await wait(300);
@@ -601,6 +657,7 @@ export function attachSmoke(win: BrowserWindow, quit: () => void): void {
       if (env("FAVORITE")) await smokeFavorite(win);
       if (env("START_MEMBER") === "1") await smokeStartMember(win);
       if (env("SUMMARY") === "1") await smokeSummary(win);
+      if (env("VERSIONS") === "1") await smokeVersions(win);
       if (env("KEYS") === "1") await smokeKeys(win);
       if (env("HISTPERF") === "1") await smokeHistPerf(win);
       if (env("BELL") === "1") await smokeBell(win);

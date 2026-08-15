@@ -212,6 +212,9 @@ if (!agentory) {
   $("gear").addEventListener("click", () => {
     openSettings();
     void loadSumState();
+    void loadVerState();
+    // 看过就不用再提醒了
+    $("gear").classList.remove("has-update");
   });
   $("settingsClose").addEventListener("click", closeSettings);
   $("scrim").addEventListener("click", (e) => {
@@ -653,6 +656,92 @@ if (!agentory) {
       (p.failed ? ` · 失败 ${p.failed}` : "") +
       (p.last ? ` · ${p.last.slice(0, 30)}` : "");
   });
+
+  // ---------- Agent 版本（P2-a：只显示，不代劳） ----------
+
+  /** 一行一个 agent。装了但读不出版本的照样列出来，写「版本未知」而不是消失。 */
+  function renderVerRows(rows: Awaited<ReturnType<typeof api.agentsState>>["rows"]): void {
+    if (rows.length === 0) {
+      $("verRows").innerHTML = '<p class="desc">没有检测到任何 agent</p>';
+      return;
+    }
+    $("verRows").innerHTML = rows
+      .map((r) => {
+        const cur = r.version ?? "版本未知";
+        const to = r.hasUpdate ? ` <span class="ver-new">→ ${esc(r.latest!)}</span>` : "";
+        const link = r.releasesUrl
+          ? `<button class="btn-ghost btn-mini" data-rel="${esc(r.releasesUrl)}">看更新说明</button>`
+          : "";
+        // 更新命令只给复制。这个项目已经亲手弄坏过一次 codex，绝不代跑。
+        const cmd = r.updateCommand && r.hasUpdate
+          ? `<code class="ver-cmd" data-copy="${esc(r.updateCommand)}" title="点击复制">${esc(r.updateCommand)}</code>`
+          : "";
+        // 四个格子永远都在，空的也占位 —— 少一个格子后面的列就整体左移
+        return `<div class="ver-row">
+          <span class="ver-name">${esc(r.agent)}</span>
+          <span class="ver-num">${esc(cur)}${to}</span>
+          <span class="ver-act">${cmd}</span>
+          <span class="ver-act">${link}</span>
+        </div>`;
+      })
+      .join("");
+  }
+
+  function renderVerState(st: Awaited<ReturnType<typeof api.agentsState>>): void {
+    const on = st.checkEnabled;
+    ($("verToggle") as HTMLButtonElement).textContent = on ? "已开启" : "关闭";
+    $("verToggle").setAttribute("aria-pressed", String(on));
+    ($("verCheck") as HTMLButtonElement).disabled = !on || st.checking;
+    const n = st.rows.filter((r) => r.hasUpdate).length;
+    $("verStatus").textContent = !on
+      ? "关闭时只显示本机版本，完全离线"
+      : st.checking
+        ? "正在查…"
+        : st.checkedAt === null
+          ? "还没查过最新版"
+          : `${n ? `${n} 个可更新 · ` : "都是最新的 · "}上次检查 ${new Date(st.checkedAt).toLocaleString()}`;
+    renderVerRows(st.rows);
+  }
+
+  const loadVerState = (): Promise<void> => api.agentsState().then(renderVerState);
+
+  $("verToggle").addEventListener("click", () => {
+    const on = $("verToggle").getAttribute("aria-pressed") === "true";
+    void api.agentsSetCheckEnabled(!on).then(renderVerState);
+  });
+  $("verCheck").addEventListener("click", () => {
+    $("verStatus").textContent = "正在查…";
+    ($("verCheck") as HTMLButtonElement).disabled = true;
+    void api.agentsCheck().then(renderVerState);
+  });
+  $("verRows").addEventListener("click", (e) => {
+    const t = (e.target as HTMLElement).closest("[data-rel],[data-copy]") as HTMLElement | null;
+    if (!t) return;
+    const rel = t.getAttribute("data-rel");
+    if (rel) return void api.agentsOpenReleases(rel);
+    const cmd = t.getAttribute("data-copy");
+    if (cmd) {
+      api.copy(cmd);
+      t.classList.add("copied");
+      setTimeout(() => t.classList.remove("copied"), 900);
+    }
+  });
+  /** 齿轮上的小圆点。不打断你，但你不打开设置也知道有事。 */
+  function setGearDot(n: number): void {
+    selfCheck["agents"] = { 可更新: n };
+    $("gear").classList.toggle("has-update", n > 0);
+    $("gear").title = n > 0 ? `设置（${n} 个 agent 可更新）` : "设置";
+  }
+
+  /**
+   * **两条路都要，因为它们覆盖的时刻不同。**
+   *
+   * 主进程在 app-ready 时就查了，那时渲染层还没开始监听 —— 只靠推送，
+   * 事件会丢（实测：`齿轮有小圆点: false`）。所以启动时自己拉一次（缓存命中的常见情况），
+   * 推送只负责「启动之后才查完」那一种。
+   */
+  void api.agentsState().then((st) => setGearDot(st.rows.filter((r) => r.hasUpdate).length));
+  api.onAgentsUpdateAvailable(setGearDot);
 
   // ---------- 右键菜单 ----------
   /**

@@ -22,9 +22,19 @@ interface Settings {
    * **API key 不在这里**：这份文件用户会自己打开手改，密钥要加密单独存。
    */
   summariesEnabled: boolean;
+  /**
+   * 查 agent 最新版。**默认开** —— 它出网，但出去的只有包名，
+   * 不含任何用户内容，是 D-8 的第三档，和「生成摘要」那种内容出境不是一回事。
+   */
+  versionCheckEnabled: boolean;
 }
 
-const DEFAULTS: Settings = { themeId: "graphite", mode: "system", summariesEnabled: false };
+const DEFAULTS: Settings = {
+  themeId: "graphite",
+  mode: "system",
+  summariesEnabled: false,
+  versionCheckEnabled: true,
+};
 
 const settingsPath = (): string => join(app.getPath("userData"), "settings.json");
 const themesDir = (): string => join(app.getPath("userData"), "themes");
@@ -39,6 +49,8 @@ function readSettings(): Settings {
           ? raw.mode
           : DEFAULTS.mode,
       summariesEnabled: raw.summariesEnabled === true,
+      // 默认开，所以只有显式写 false 才关
+      versionCheckEnabled: raw.versionCheckEnabled !== false,
     };
   } catch {
     // 没有设置文件、或文件坏了 —— 用默认值，不是错误
@@ -50,6 +62,12 @@ function readSettings(): Settings {
 export const summariesEnabled = {
   get: (): boolean => readSettings().summariesEnabled,
   set: (v: boolean): void => writeSettings({ ...readSettings(), summariesEnabled: v }),
+};
+
+/** 给版本检测用的开关读写。 */
+export const versionCheckEnabled = {
+  get: (): boolean => readSettings().versionCheckEnabled,
+  set: (v: boolean): void => writeSettings({ ...readSettings(), versionCheckEnabled: v }),
 };
 
 function writeSettings(s: Settings): void {
