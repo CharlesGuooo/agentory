@@ -43,6 +43,64 @@ const run = (win: BrowserWindow, js: string): Promise<unknown> =>
 const TXT = (sel: string): string =>
   `(document.querySelector(${JSON.stringify(sel)})?.textContent ?? "").replace(/\\s+/g," ").trim()`;
 
+/**
+ * DPAPI 往返：**加密 → 落盘 → 换一个进程 → 解密**。
+ *
+ * 分两次启动跑（`scripts/verify-dpapi.cjs` 让两次共用同一个 APPDATA）：
+ * - `set`  ：打开摘要开关、填一个假 key、保存
+ * - `check`：新进程重新读 —— 输入框的占位文字就是答案
+ *
+ * 占位文字为什么是答案：`readKey()` 解不开时会**删掉密文文件并返回 null**，
+ * 于是占位退回「DeepSeek API key」。所以看到「已保存」就等于加密和解密都成功了。
+ *
+ * 这条原本被我判成「只有第二个 Windows 账户能验」—— 是错的。
+ * 换账户验的是 DPAPI 用了另一把密钥，而机制本身在这里就能验，
+ * 而且它正好覆盖 `summary/ipc.ts` 那个缺 `mkdirSync` 的洞（新机器上 userData 还不存在）。
+ */
+export async function smokeDpapi(win: BrowserWindow, phase: string): Promise<void> {
+  await wait(1500);
+  await run(win, 'document.getElementById("gear").click()');
+  await wait(800);
+  // 摘要区默认关着，key 输入框藏在开关后面
+  await run(win, `(() => {
+    const t = document.getElementById("sumToggle");
+    if (t.getAttribute("aria-pressed") !== "true") t.click();
+  })()`);
+  await wait(1200);
+
+  if (phase === "set") {
+    await run(win, `(() => {
+      const box = document.getElementById("sumKey");
+      box.value = "sk-dpapi-roundtrip-测试-12345";
+      document.getElementById("sumKeySave").click();
+    })()`);
+    await wait(1500);
+    say(
+      "dpapi-set",
+      await run(
+        win,
+        `JSON.stringify({
+          占位: document.getElementById("sumKey").placeholder,
+          输入框已清空: document.getElementById("sumKey").value === "",
+          状态: ${TXT("#sumStatus")},
+        })`,
+      ),
+    );
+    return;
+  }
+
+  say(
+    "dpapi-check",
+    await run(
+      win,
+      `JSON.stringify({
+        占位: document.getElementById("sumKey").placeholder,
+        解密成功: document.getElementById("sumKey").placeholder.includes("已保存"),
+      })`,
+    ),
+  );
+}
+
 export async function smokeClean(win: BrowserWindow, shotDir: string | null): Promise<void> {
   /** 截图。**界面这层没有自动化测试** —— 这是唯一能真的看见的办法。 */
   const snap = async (name: string): Promise<void> => {

@@ -18,7 +18,8 @@
     "package": "electron-vite build && electron-builder",
     "package:dir": "electron-vite build && electron-builder --dir",
     "perf": "vitest run src/main/sessions/real-machine.test.ts --no-file-parallelism -t 单条",
-    "verify:clean": "electron-vite build && node scripts/verify-clean.cjs"
+    "verify:clean": "electron-vite build && node scripts/verify-clean.cjs",
+    "verify:dpapi": "electron-vite build && node scripts/verify-dpapi.cjs"
   },
   "dependencies": {
     "node-pty": "^1.1.0"
