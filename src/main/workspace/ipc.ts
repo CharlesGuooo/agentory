@@ -73,7 +73,7 @@ export function registerWorkspaceIpc(getWindow: () => BrowserWindow | null): voi
 
   /**
    * 批量恢复：**串行**。实测负载是 8 个 claude ≈ 上百个子进程，
-   * 并行恢复会瞬间打满机器（`README.md` §10）。
+   * 并行恢复会瞬间打满机器（`docs/research-notes.md` §10）。
    * 编排逻辑在 `restoreSerially` 里，有 7 个测试守着。
    */
   ipcMain.handle("workspace:restoreAll", async (_e, req: RestoreRequest): Promise<RestoreOutcome[]> => {

@@ -34,7 +34,7 @@ describe("resumeCommand", () => {
     });
   });
 
-  it("codex 用子命令而不是 flag —— README §8 的验收标准", () => {
+  it("codex 用子命令而不是 flag —— docs/research-notes.md §8 的验收标准", () => {
     const r = resumeCommand(session("codex"));
     expect(r.args[0]).toBe("resume");
     expect(r.args).not.toContain("--resume");
@@ -48,7 +48,7 @@ describe("resumeCommand", () => {
     expect(r.args).not.toContain("--session-id");
   });
 
-  it("grok 不得使用 --session-id —— 同上，且 README §3.3 记错了", () => {
+  it("grok 不得使用 --session-id —— 同上，且 docs/research-notes.md §3.3 记错了", () => {
     const r = resumeCommand(session("grok"));
     expect(r.args).toContain("--resume");
     expect(r.args).not.toContain("--session-id");

@@ -122,7 +122,7 @@ describe("真机恢复", () => {
       if (!s) return void ctx.skip();
 
       const cmd = resumeCommand(s);
-      // 唯一用子命令的那个 —— README §8 的验收标准
+      // 唯一用子命令的那个 —— docs/research-notes.md §8 的验收标准
       expect(cmd.args[0]).toBe("resume");
       expect(cmd.args).not.toContain("--resume");
 

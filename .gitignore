@@ -42,3 +42,6 @@ resources/icons/
 #   · settings.local.json 按惯例就不提交（名字里的 local 就是这个意思）
 #   · 它有 3.2 MB / 170 个文件，而本项目自己的全部代码 + 文档只有 0.7 MB
 .claude/
+
+# electron-builder 的产物
+release/

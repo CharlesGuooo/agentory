@@ -18,7 +18,7 @@
 - **THEN** 得到的是 `codex resume <id>`
 - **AND** **不是** `codex --resume <id>`
 
-这是 `README.md §8` 定下的验收标准。
+这是 `docs/research-notes.md §8` 定下的验收标准。
 
 #### Scenario: 其余四个用 flag
 

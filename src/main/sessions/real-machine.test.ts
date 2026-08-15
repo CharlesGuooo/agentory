@@ -4,7 +4,7 @@ import { allScanners, scanAllAgents } from "./all";
 import type { AgentId, Session } from "./types";
 
 /**
- * 真机全量验证 —— `README.md §8` 定下的验收标准。
+ * 真机全量验证 —— `docs/research-notes.md §8` 定下的验收标准。
  *
  * 刻意写成带断言的测试而不是一次性脚本：会话数会变，但这些不变量必须一直成立。
  * 本机没装某个 agent 时它自然贡献 0 条，不影响其余断言。
@@ -66,7 +66,7 @@ describe("真机全量扫描", () => {
         continue;
       }
       expect(s.cwd, `${s.agent}/${s.sessionId}`).toMatch(/^[A-Za-z]:[\\/]/);
-      // 这就是 README §8 的验收标准：cwd 必须真的通得过存在性检查
+      // 这就是 docs/research-notes.md §8 的验收标准：cwd 必须真的通得过存在性检查
       expect(s.cwdExists, `${s.agent}/${s.sessionId} → ${s.cwd}`).toBe(existsSync(s.cwd));
     }
   });

@@ -14,13 +14,13 @@ export interface ResumeCommand {
  * **两条不能踩的线：**
  *
  * 1. **codex 是唯一用子命令的**（`codex resume <id>`，不是 `--resume`）。
- *    这是 `README.md §8` 定下的验收标准。
+ *    这是 `docs/research-notes.md §8` 定下的验收标准。
  * 2. **绝不用 `--session-id`**。`pi` 和 `grok` 都有这个参数，但它的语义是
  *    「用这个 id，不存在就**创建**」—— 拿它恢复，id 对不上时不报错，
  *    而是静默开一个新的空会话。用户以为历史回来了，实际什么都没有。
  *    静默失败比报错危险得多。
  *
- * `README.md §3.3` 对 grok 记的是 `--session-id`，那是错的，已在本次修正。
+ * `docs/research-notes.md §3.3` 对 grok 记的是 `--session-id`，那是错的，已在本次修正。
  */
 const RECIPES: Record<AgentId, (id: string) => string[]> = {
   claude: (id) => ["--resume", id],

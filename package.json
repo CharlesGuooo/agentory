@@ -1,6 +1,6 @@
 {
   "name": "agentory",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Windows 上的跨 agent 会话工作台 —— 统一索引、统一恢复、会话摘要",
   "license": "MIT",
   "private": true,
@@ -14,7 +14,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify:node-pty": "electron scripts/verify-node-pty.cjs",
-    "icons": "electron scripts/make-icons.cjs"
+    "icons": "electron scripts/make-icons.cjs",
+    "package": "electron-vite build && electron-builder",
+    "package:dir": "electron-vite build && electron-builder --dir"
   },
   "dependencies": {
     "node-pty": "^1.1.0"
@@ -24,6 +26,7 @@
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "electron": "43.4.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^4.0.1",
     "typescript": "^5.9.3",
     "vite": "^7.1.13",

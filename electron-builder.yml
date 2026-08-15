@@ -1,0 +1,86 @@
+# electron-builder configuration.
+#
+# YAML rather than a package.json block on purpose: the two settings that matter
+# most here need an explanation, and JSON cannot carry one.
+
+appId: com.agentory.app
+productName: agentory
+copyright: MIT © CharlesGuooo
+
+directories:
+  output: release
+  buildResources: resources
+
+files:
+  - out/**
+  - package.json
+
+# ---------------------------------------------------------------------------
+# Do not rebuild native modules from source.
+#
+# electron-builder's default is to run node-gyp against every native dep. For
+# node-pty that fails outright (its gyp file needs the winpty submodule and a
+# full MSVC toolchain), and more importantly it is pointless here: node-pty
+# ships N-API prebuilds, and this app has been running on those prebuilds from
+# the first prototype. We verified them against Electron's ABI before choosing
+# this stack (scripts/verify-node-pty.cjs), so a from-source rebuild would
+# replace something known-good with something unverified.
+# ---------------------------------------------------------------------------
+npmRebuild: false
+
+# No auto-update channel. electron-builder otherwise tries to emit latest.yml
+# for electron-updater and crashes when it cannot work out a publish target,
+# which is exactly our situation: there is no remote repository yet, so an
+# update feed would point nowhere. Revisit when the repo is on GitHub and the
+# first release actually exists.
+publish: null
+
+# ---------------------------------------------------------------------------
+# node-pty MUST live outside the asar archive.
+#
+# It ships more than a .node addon: OpenConsole.exe and winpty-agent.exe are
+# real executables that node-pty spawns at runtime. Windows cannot execute a
+# file that lives inside an asar archive, so leaving them packed produces an
+# app that builds fine, launches fine, and then fails the moment you open a
+# session — the one code path that is this product's entire reason to exist.
+#
+# We do not run electron-rebuild: node-pty ships N-API prebuilds, and we
+# verified them against Electron's ABI before choosing this stack.
+# ---------------------------------------------------------------------------
+asarUnpack:
+  - "**/node_modules/node-pty/**"
+
+# The app reads this at runtime from process.resourcesPath to set the window
+# icon. Keep the name in sync with iconPath() in src/main/index.ts.
+extraResources:
+  - from: resources/icon.ico
+    to: icon.ico
+
+win:
+  icon: resources/icon.ico
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+nsis:
+  # Per-user install. No UAC prompt, no administrator required, and nothing is
+  # written outside the user's own profile. This is a developer tool for one
+  # person, not a machine-wide service.
+  perMachine: false
+  # A wizard rather than a one-click install: one-click installers that begin
+  # copying files the instant you double-click read as untrustworthy, which is
+  # the last thing an unsigned installer needs.
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: agentory
+  # The uninstaller leaves %APPDATA%/agentory alone, so workspace.json and
+  # favorites.json survive a reinstall. Sessions are the user's data, not ours.
+  deleteAppDataOnUninstall: false
+
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}

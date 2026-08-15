@@ -1,6 +1,6 @@
 # multi_agents_desktop_app
 
-**开工前先完整读一遍 `README.md`。** 那是上一轮调研 + 本机实测的交接文档,里面的
+**开工前先完整读一遍 `docs/research-notes.md`。** 那是上一轮调研 + 本机实测的交接文档,里面的
 「五个 agent 的存储格式 / resume 命令」表格是产品规格,不要重新调研。
 
 ## 一句话定位
@@ -25,5 +25,5 @@ Windows 11,默认 shell 是 Windows PowerShell 5.1(pwsh 7.6.4 也在)。
 
 ## Skills
 
-`.claude/skills/` 已预置 5 个本地 skill,其余用全局的。**分阶段清单见 `README.md` §9**,
+`.claude/skills/` 已预置 5 个本地 skill,其余用全局的。**分阶段清单见 `docs/research-notes.md` §9**,
 包括明确不要用的那两个。

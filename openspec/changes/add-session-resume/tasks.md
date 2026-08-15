@@ -7,7 +7,7 @@
       其中两条是**否定性断言**，防的是静默失败：
       pi 的命令**不得**含 `--session-id`、grok 的**不得**含 `--session-id`
 - [x] 1.2 已测：`codex resume <id>`，且断言 args 里不出现任何 `--` 开头的 flag
-      （`README.md §8` 的验收标准）
+      （`docs/research-notes.md §8` 的验收标准）
 - [x] 1.3 已测：`cwdExists=false` 与 `cwd=null` 分别抛不同的错，且只抛错不返回结果
       且**不回退**到任何别的目录
 - [x] 1.4 `src/main/sessions/resume.ts`，10 个测试
@@ -41,7 +41,7 @@
 
 ## 5. 收尾
 
-- [x] 5.1 `README.md §3.3` 的 grok 记载已修正（`--session-id` → `--resume`），并注明了那个参数「不存在就创建」的陷阱
+- [x] 5.1 `docs/research-notes.md §3.3` 的 grok 记载已修正（`--session-id` → `--resume`），并注明了那个参数「不存在就创建」的陷阱
 - [x] 5.2 `ponytail-review` 已跑并应用。**最有价值的一条不是砍行数**：
       渲染层把 `filterSessions` 的规则**手抄了一遍** —— 主进程那份有 11 个测试守着，
       渲染层那份一个都没有，等于**让那些测试变得没意义**（被测的不是真正跑的）。
