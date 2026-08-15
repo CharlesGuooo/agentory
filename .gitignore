@@ -1,0 +1,44 @@
+# --- 探针采集到的字节流：绝对不能提交 ---
+# 这些是真实 agent 会话的原始输出，含用户的源码、路径和对话内容。
+
+# Node
+node_modules/
+dist/
+out/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*
+
+# Rust（探针）
+
+# 验证脚本的落盘输出
+scripts/*.out.txt
+
+# 本地配置与产物
+.env
+.env.local
+*.local
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# 手工验证时用的临时会话目录
+.scratch-session/
+
+
+# 图标：SVG 源与打包用的 .ico 进版本库（别人 clone 下来不跑生成器也能构建），
+# 中间的 PNG 是 scripts/make-icons.cjs 的产物，不进
+resources/icons/
+
+# --- 本地开发工具，不是产品的一部分 ---
+# .claude/ 里是第三方 skill（impeccable / taste-skill / ponytail / openspec 等）与
+# 机器相关的 settings.local.json。它们是维护者的工具链，不是这个应用的代码：
+#   · 授权不明的第三方代码不该 vendor 进开源仓库
+#   · settings.local.json 按惯例就不提交（名字里的 local 就是这个意思）
+#   · 它有 3.2 MB / 170 个文件，而本项目自己的全部代码 + 文档只有 0.7 MB
+.claude/

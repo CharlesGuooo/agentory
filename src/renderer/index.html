@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    />
+    <title>agentory</title>
+  </head>
+  <body>
+    <!-- 自绘标题栏。整条是拖拽区，具体控件用 no-drag 挖回来。 -->
+    <header class="titlebar" id="titlebar">
+      <div class="brand">
+        <!--
+          标题栏标记 = 打包图标那个卡带的**单色版**。
+          卡带靠材质对比（近黑壳 / 发光屏 / 金触点）才读得出「是个东西」，压成单色
+          会糊成一个色块，所以用 currentColor 的两档不透明度保住「壳 + 屏」的层次。
+          颜色跟主题走（填 --c-accent）—— 渐变在 15px 上本来就退化成一个中间色，
+          而固定的青紫放进 PHOSPHOR 会像贴上去的。
+        -->
+        <svg class="mark" viewBox="0 0 64 64" width="15" height="15" aria-hidden="true">
+          <path fill="currentColor" opacity=".45"
+                d="M9,10 h46 a5,5 0 0 1 5,5 v30 a5,5 0 0 1 -5,5 h-9 v-5 h-28 v5 h-9
+                   a5,5 0 0 1 -5,-5 v-30 a5,5 0 0 1 5,-5 z"/>
+          <rect fill="currentColor" x="12" y="16" width="40" height="21" rx="3"/>
+          <g fill="currentColor" opacity=".6">
+            <rect x="19" y="43" width="7.4" height="9" rx="1.6"/>
+            <rect x="28.3" y="43" width="7.4" height="9" rx="1.6"/>
+            <rect x="37.6" y="43" width="7.4" height="9" rx="1.6"/>
+          </g>
+        </svg>agentory
+      </div>
+      <div class="tabs" id="tabs"></div>
+    </header>
+
+    <div class="body">
+      <aside class="side">
+        <div class="side-top">
+          <button class="btn-new" id="btnNew" type="button"><span>+</span>新建会话</button>
+          <button class="btn-search" id="btnHistory" type="button">
+            <span>⌕</span>历史会话<span class="count" id="historyCount"></span>
+          </button>
+        </div>
+        <!--
+          上次留下的会话。**刻意不是弹窗** —— 弹窗每次开应用都拦住你，
+          而它和侧栏重复：未启动的成员本来就在下面列着，点一行就起。
+          这条横幅只提供「一次全起」这一个额外能力，并且不挡路。
+        -->
+        <div class="resume-bar" id="resumeBar" hidden>
+          <span class="txt">上次留下 <b id="resumeCount">0</b> 个会话</span>
+          <button class="btn-ghost sm" id="resumeGo" type="button">全部恢复</button>
+          <button class="x" id="resumeSkip" type="button" aria-label="忽略">✕</button>
+          <span class="note" id="resumeNote"></span>
+        </div>
+        <div class="tree" id="tree"></div>
+        <!-- 收藏：与工作集正交，收藏不等于在跑。空的时候整块隐藏。 -->
+        <div class="fav-wrap" id="favWrap" hidden>
+          <div class="grp fav-head">
+            <span class="car">★</span>收藏<span class="count" id="favCount">0</span>
+          </div>
+          <div class="fav-tree" id="favTree"></div>
+        </div>
+        <div class="side-foot">
+          <span id="runningCount">—</span>
+          <button class="gear" id="gear" type="button" aria-label="设置" title="设置">⚙</button>
+        </div>
+      </aside>
+      <main class="term-host" id="terminal">
+        <!-- 一个会话都没起来时的空态。不是装饰 —— 没有它这里就是一整片黑。 -->
+        <div class="term-empty" id="termEmpty">
+          <p class="te-title">还没有会话在跑</p>
+          <p class="te-line">点左上角<b>新建会话</b>开一个新的。</p>
+          <p class="te-line">
+            或者从<b>历史会话</b>里找回以前的 —— 五个 agent 的会话都在里面，点开就接着聊。
+          </p>
+        </div>
+      </main>
+    </div>
+
+    <!-- 设置：弹窗。默认隐藏。 -->
+    <div class="scrim" id="scrim" hidden>
+      <div class="panel" role="dialog" aria-modal="true" aria-label="设置">
+        <div class="panel-head">
+          <h2>设置 · 外观</h2>
+          <button class="close" id="settingsClose" type="button" aria-label="关闭">✕</button>
+        </div>
+        <div class="panel-body">
+          <section class="field">
+            <label id="modeLabel">明暗</label>
+            <p class="desc">与主题相互独立 —— 换明暗不会把你选的主题换掉</p>
+            <div class="seg" id="modeSeg" role="group" aria-labelledby="modeLabel">
+              <button type="button" data-mode="system">跟随系统</button>
+              <button type="button" data-mode="light">浅色</button>
+              <button type="button" data-mode="dark">深色</button>
+            </div>
+          </section>
+          <section class="field">
+            <label>主题</label>
+            <p class="desc" id="themeDesc">把自己的 JSON 放进主题目录即可新增</p>
+            <div class="cards" id="cards"></div>
+            <p class="warn" id="themeWarn" hidden></p>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <!-- 新建会话：选 agent + 选目录。默认隐藏。 -->
+    <div class="scrim" id="newScrim" hidden>
+      <div class="panel" role="dialog" aria-modal="true" aria-label="新建会话">
+        <div class="panel-head">
+          <h2>新建会话</h2>
+          <button class="close" id="newClose" type="button" aria-label="关闭">✕</button>
+        </div>
+        <div class="panel-body">
+          <section class="field">
+            <label id="newAgentLabel">选哪个 agent</label>
+            <p class="desc">只列出本机检测到的</p>
+            <div class="chips" id="newAgents" role="group" aria-labelledby="newAgentLabel"></div>
+          </section>
+          <section class="field">
+            <label for="newCwd">工作目录</label>
+            <p class="desc">候选来自已有会话的真实目录</p>
+            <div class="row">
+              <input
+                id="newCwd"
+                class="search"
+                type="text"
+                list="newCwdList"
+                placeholder="选一个候选，或点浏览，或直接粘路径"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <datalist id="newCwdList"></datalist>
+              <button class="btn-ghost" id="newBrowse" type="button">浏览…</button>
+            </div>
+          </section>
+          <p class="warn" id="newError" hidden></p>
+        </div>
+        <div class="panel-foot">
+          <button class="btn-primary" id="newGo" type="button" disabled>开始</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 快捷键表。F1 打开。内容由 shortcuts.ts 那张表渲染 —— 表是唯一真源。 -->
+    <div class="scrim" id="keysScrim" hidden>
+      <div class="panel" role="dialog" aria-modal="true" aria-label="快捷键">
+        <div class="panel-head">
+          <h2>快捷键</h2>
+          <button class="close" id="keysClose" type="button" aria-label="关闭">✕</button>
+        </div>
+        <div class="panel-body">
+          <p class="desc">
+            应用级动作全部走 <b>Ctrl+Shift</b> —— 终端要用到 Ctrl+W（删词）、Ctrl+A/E（行首尾）、
+            Ctrl+C（中断），那些键原样留给 agent。
+          </p>
+          <div class="keys" id="keysList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 历史会话：独立视图，不进侧栏（D-5 / D-8）。默认隐藏。 -->
+    <div class="scrim" id="histScrim" hidden>
+      <div class="panel panel-wide" role="dialog" aria-modal="true" aria-label="历史会话">
+        <div class="panel-head">
+          <h2>历史会话</h2>
+          <span class="subtle" id="histSummary"></span>
+          <button class="close" id="histClose" type="button" aria-label="关闭">✕</button>
+        </div>
+        <div class="hist-tools">
+          <input
+            id="histSearch"
+            class="search"
+            type="search"
+            placeholder="搜索工作目录或标题…"
+            autocomplete="off"
+          />
+          <div class="chips" id="histAgents"></div>
+        </div>
+        <div class="hist-list" id="histList"></div>
+      </div>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

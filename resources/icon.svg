@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!--
+    agentory 应用图标 · 卡带（提案 2C，配色 F 青→紫）
+
+    一盘能插进去、拔出来、留着不丢的卡带 —— 「关机也不丢」的实体。
+
+    三条不能动的：
+    1. 背景必须透明。Windows 任务栏 / 开始菜单 / 桌面快捷方式都是把图标合成到
+       各种底色上的，烤一个深色方块进去就会变成一块突兀的瓷砖。
+    2. 外壳是近黑，所以**必须有那道亮边（rim）**。没有它，深色主题的任务栏上
+       外壳会整个消失，只剩一块发光的屏悬在那里。
+    3. 辉光被 clip 在外壳里。让它漏到外面会在透明底上留一圈毛边。
+
+    两种材质是这个图标读起来像「东西」而不是「图形」的原因：近黑的壳 + 金色的触点。
+  -->
+  <defs>
+    <!-- 外壳：冷近黑。暖灰会让整体读成陶土，那是上一版被否掉的原因。 -->
+    <linearGradient id="shell" x1="0" y1="0" x2=".32" y2="1">
+      <stop offset="0" stop-color="#2C333F"/>
+      <stop offset=".42" stop-color="#171C24"/>
+      <stop offset="1" stop-color="#080A0E"/>
+    </linearGradient>
+
+    <!-- 屏幕：斜向渐变（左上亮 → 右下暗），像一个被照亮的表面而不是一块色板 -->
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7EEAFA"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+
+    <!-- 触点：真实卡带 / PCB 的边缘连接器就是金的。第二种材质。 -->
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F5D98B"/>
+      <stop offset=".55" stop-color="#C9A44E"/>
+      <stop offset="1" stop-color="#8A6B2A"/>
+    </linearGradient>
+
+    <!-- 亮边：左上强、右下几乎没有，模拟单一光源 -->
+    <linearGradient id="rim" x1="0" y1="0" x2=".8" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".55"/>
+      <stop offset=".45" stop-color="#FFFFFF" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity=".05"/>
+    </linearGradient>
+
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.4" result="b"/>
+      <feFlood flood-color="#5BD8F5" flood-opacity=".85"/>
+      <feComposite in2="b" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <path id="body" d="M9,10 h46 a5,5 0 0 1 5,5 v30 a5,5 0 0 1 -5,5 h-9 v-5 h-28 v5 h-9
+                       a5,5 0 0 1 -5,-5 v-30 a5,5 0 0 1 5,-5 z"/>
+    <clipPath id="inside"><use href="#body"/></clipPath>
+  </defs>
+
+  <!-- 触点先画：它要从底部缺口里探出来，所以不能被外壳的 clip 裁掉 -->
+  <g fill="url(#gold)">
+    <rect x="18.5" y="43" width="5.1" height="10" rx="1.3"/>
+    <rect x="25.8" y="43" width="5.1" height="10" rx="1.3"/>
+    <rect x="33.1" y="43" width="5.1" height="10" rx="1.3"/>
+    <rect x="40.4" y="43" width="5.1" height="10" rx="1.3"/>
+  </g>
+
+  <use href="#body" fill="url(#shell)"/>
+
+  <g clip-path="url(#inside)">
+    <!-- 顶边高光：一条薄亮片，让壳有厚度 -->
+    <path d="M9,10 h46 a5,5 0 0 1 5,5 v2 a5,5 0 0 0 -5,-5 h-46 a5,5 0 0 0 -5,5 v-2 a5,5 0 0 1 5,-5 z"
+          fill="#FFFFFF" opacity=".5"/>
+    <!-- 屏幕的内嵌阴影：让它看起来是嵌进去的，不是贴上去的 -->
+    <rect x="8.2" y="14.2" width="47.6" height="24.6" rx="3.6" fill="#000000" opacity=".55"/>
+    <g filter="url(#glow)">
+      <rect x="9" y="15" width="46" height="23" rx="3" fill="url(#screen)"/>
+    </g>
+    <!-- 屏幕上的内容：暗色剪影压在亮面上 -->
+    <g fill="#0A0C10" opacity=".45">
+      <rect x="13.5" y="19.5" width="25" height="3.2" rx="1.6"/>
+      <rect x="13.5" y="25.3" width="17" height="3.2" rx="1.6"/>
+      <rect x="13.5" y="31.1" width="21" height="3.2" rx="1.6"/>
+      <rect x="44" y="30.6" width="5.2" height="4.2" rx="1.3"/>
+    </g>
+  </g>
+
+  <!-- 亮边最后画，压在所有东西上面 -->
+  <use href="#body" fill="none" stroke="url(#rim)" stroke-width="1"/>
+</svg>

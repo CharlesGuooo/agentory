@@ -1,0 +1,464 @@
+/* 所有颜色都来自 theme-system 注入的 --c-* 变量（shared/theme.ts 的 toCssVars）。
+   这里不出现任何硬编码色值 —— 唯一的例外是关闭按钮的红，那是 Windows 的约定色。 */
+
+:root {
+  /* 必须与主进程的 TITLEBAR_HEIGHT 一致，否则原生窗口控件会错位 */
+  --titlebar-h: 40px;
+  --side-w: 236px;
+  --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+
+  /* 圆角尺度。此前有 10 个各不相同的值（2/4/5/6/7/8/10/12/999/50%）——
+     那不是尺度，是随手写的。收成五档，圆点仍走 50%。 */
+  --r-xs: 2px;    /* 微件：色板、微缩条 */
+  --r-sm: 4px;    /* 小控件 */
+  --r: 7px;       /* 默认：按钮、行、输入框 */
+  --r-lg: 12px;   /* 面板、卡片 */
+  --r-pill: 999px;
+
+  /* 字号尺度。此前有 12 个值，其中 11 / 11.5 / 12 / 12.5 同时在用 ——
+     肉眼分不出差别，却是四个各自独立的决定。收成六档。 */
+  --t-xs: 10.5px;
+  --t-sm: 11.5px;
+  --t: 12.5px;
+  --t-md: 13px;   /* 与 body 同级 */
+  --t-lg: 15px;
+  --t-xl: 19px;
+
+  /* 动效。此前整份样式表 transition 只出现 1 次，而那一次是
+     prefers-reduced-motion 的关闭开关 —— 写了兜底，却没有东西可关。 */
+  --dur-fast: 120ms;
+  --dur: 160ms;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ---------- 交互反馈 ----------
+   此前 `:active` 在整份样式表里出现 0 次 —— 全应用没有一个按钮有按下反馈，
+   点下去和没点一样。这里一次性补齐，因为所有可点元素都是真 <button>。 */
+button {
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    opacity var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+/* 半像素的下沉。够被感觉到，不够被看见 —— 这正是"手感"该有的量级。 */
+button:not(:disabled):active { transform: translateY(0.5px); }
+
+/* 弹窗出现时的一次动效。整个应用只有这一处编排过的动作。 */
+.scrim:not([hidden]) .panel { animation: panel-in var(--dur) var(--ease); }
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+}
+
+/* 滚动条也要跟着主题走。默认的系统滚动条在深色界面里是一条浅灰，
+   而且五套主题换过去它还是那条浅灰 —— 主题就漏了一个洞。 */
+* { scrollbar-width: thin; scrollbar-color: var(--c-line) transparent; }
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--c-line); border-radius: var(--r);
+  border: 3px solid transparent; background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--c-dim); background-clip: content-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--c-bg, #16181d);
+  color: var(--c-fg, #d6d9e0);
+  font-family: var(--sans);
+  font-size: 13px;
+}
+
+body { display: grid; grid-template-rows: var(--titlebar-h) 1fr; }
+
+/* ---------- 标题栏 ---------- */
+.titlebar {
+  background: var(--c-chrome);
+  border-bottom: 1px solid var(--c-line);
+  display: flex;
+  align-items: stretch;
+  padding-left: 12px;
+  min-width: 0;
+  -webkit-app-region: drag;
+}
+.brand {
+  display: flex; align-items: center; gap: 8px; padding-right: 14px;
+  color: var(--c-fg); font-weight: 600; letter-spacing: -0.01em; flex: 0 0 auto;
+}
+.brand .mark { color: var(--c-accent); flex: 0 0 auto; display: block; }
+.tabs { display: flex; align-items: stretch; gap: 2px; flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.tab {
+  display: flex; align-items: center; gap: 7px; padding: 0 12px; max-width: 240px;
+  color: var(--c-dim); white-space: nowrap; border-top: 2px solid transparent;
+  background: none; border-left: 0; border-right: 0; border-bottom: 0;
+  font: inherit; cursor: pointer; -webkit-app-region: no-drag;
+}
+.tab .dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
+.tab .lbl { overflow: hidden; text-overflow: ellipsis; }
+.tab.on { background: var(--c-bg); color: var(--c-fg); border-top-color: var(--c-accent); }
+.tab:focus-visible { outline: 2px solid var(--c-accent); outline-offset: -2px; }
+
+/* ---------- 主体 ---------- */
+.body { display: grid; grid-template-columns: var(--side-w) 1fr; min-height: 0; }
+
+.side {
+  background: var(--c-chrome); border-right: 1px solid var(--c-line);
+  display: flex; flex-direction: column; min-height: 0;
+}
+.side-top { padding: 10px; }
+.btn-new {
+  width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+  border-radius: var(--r); background: var(--c-sel); color: var(--c-fg); font-weight: 600;
+  border: 1px solid var(--c-line); font: inherit; font-weight: 600; cursor: pointer;
+}
+.btn-new:hover { border-color: var(--c-dim); }
+.btn-new:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+
+/* 次要动作：与「新建会话」同宽同高，但只有文字重量的差别 ——
+   此前这个类**在整份样式表里不存在**，于是它退化成了系统原生按钮：
+   深色主题里的一个浅色小方块，文字还被挤掉一半。 */
+.btn-search {
+  width: 100%; margin-top: 6px; display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-radius: var(--r);
+  background: none; border: 1px solid transparent; color: var(--c-dim);
+  font: inherit; cursor: pointer; text-align: left;
+}
+.btn-search:hover { background: var(--c-sel); color: var(--c-fg); }
+.btn-search:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+.btn-search .count {
+  margin-left: auto; font-variant-numeric: tabular-nums; font-size: var(--t-sm);
+  color: var(--c-dim); opacity: 0.85;
+}
+
+/* 内容不多时两块都靠上，别让收藏区孤零零漂在底部；内容多了自己滚。
+   底栏用 margin-top:auto 推到底，而不是靠 tree 撑开一片空白。 */
+.tree { flex: 0 1 auto; min-height: 0; overflow: auto; padding: 2px 0 6px; }
+/* 分组头。**刻意没有折叠箭头** —— 之前那个 ▾ 是个假承诺，点它什么也不会发生。 */
+.grp {
+  display: flex; align-items: center; gap: 6px; padding: 10px 12px 4px;
+  color: var(--c-dim); font-size: var(--t-sm); letter-spacing: 0.04em;
+}
+.grp .car { opacity: 0.9; }
+.sess {
+  width: 100%; text-align: left; font: inherit; cursor: pointer;
+  padding: 6px 12px 8px 24px; display: flex; flex-direction: column; gap: 3px;
+  border: 0; border-left: 2px solid transparent; background: none; color: inherit;
+}
+.sess:hover { background: var(--c-sel); }
+.sess.on { background: var(--c-sel); border-left-color: var(--c-accent); }
+.sess:focus-visible { outline: 2px solid var(--c-accent); outline-offset: -2px; }
+.sess .row1 { display: flex; align-items: baseline; gap: 7px; }
+.sess .agent { color: var(--c-fg); font-weight: 500; }
+.sess .state { color: var(--c-dim); font-size: var(--t-sm); margin-left: auto; }
+/* 第二行 = 会话的意义（摘要 ?? 自带标题 ?? 开头那句）。
+   侧栏窄，折两行再截 —— 单行只放得下十几个字，正好把主题切掉。 */
+.sess .sum {
+  color: var(--c-dim); font-size: var(--t-sm); line-height: 1.45;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; overflow-wrap: anywhere;
+}
+.sess .sum.none { opacity: 0.55; font-style: italic; }
+/* 会话 id = 身份。刻意不显眼：它用来确认"是哪一个"，不是用来读的。 */
+.sid { font-family: var(--mono); font-size: var(--t-xs); color: var(--c-dim); opacity: 0.8; }
+.pip { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+
+.side-foot {
+  margin-top: auto;
+  border-top: 1px solid var(--c-line); padding: 8px 10px;
+  display: flex; align-items: center; gap: 9px; color: var(--c-dim);
+}
+.gear {
+  margin-left: auto; width: 28px; height: 28px; border-radius: var(--r); display: grid;
+  place-items: center; border: 1px solid transparent; background: none;
+  color: inherit; font-size: var(--t-md); cursor: pointer;
+}
+.gear:hover { background: var(--c-sel); border-color: var(--c-line); color: var(--c-fg); }
+.gear:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+
+.term-host { background: var(--c-bg); padding: 8px 10px; min-width: 0; overflow: hidden; position: relative; }
+
+/* ---------- 设置弹窗 ---------- */
+.scrim {
+  position: fixed; inset: 0; z-index: 10;
+  background: rgb(0 0 0 / 0.5); backdrop-filter: blur(3px);
+  display: grid; place-items: center; padding: 24px;
+}
+.scrim[hidden] { display: none; }
+
+.panel {
+  width: min(720px, 100%); max-height: 100%; overflow: auto;
+  background: var(--c-chrome); border: 1px solid var(--c-line);
+  border-radius: var(--r-lg); box-shadow: 0 20px 50px -12px rgb(0 0 0 / 0.6);
+  display: flex; flex-direction: column;
+}
+.panel-head {
+  display: flex; align-items: center; gap: 10px; padding: 14px 16px;
+  border-bottom: 1px solid var(--c-line);
+}
+.panel-head h2 { font-size: var(--t-lg); font-weight: 600; color: var(--c-fg); }
+.panel-head .close {
+  margin-left: auto; color: var(--c-dim); cursor: pointer; padding: 2px 7px;
+  border-radius: var(--r-sm); border: 0; background: none; font: inherit;
+}
+.panel-head .close:hover { background: var(--c-sel); color: var(--c-fg); }
+.panel-head .close:focus-visible { outline: 2px solid var(--c-accent); }
+.panel-body { padding: 16px; display: flex; flex-direction: column; gap: 20px; }
+
+.field { display: flex; flex-direction: column; gap: 8px; }
+.field > label { color: var(--c-fg); font-weight: 600; font-size: var(--t); }
+.field .desc { color: var(--c-dim); font-size: var(--t-sm); margin-top: -4px; }
+.field .warn { color: var(--c-dim); font-size: var(--t-sm); }
+.field .warn[hidden] { display: none; }
+
+.seg {
+  display: inline-flex; padding: 2px; gap: 2px; width: fit-content;
+  background: var(--c-bg); border: 1px solid var(--c-line); border-radius: var(--r);
+}
+.seg button {
+  font: inherit; font-size: var(--t); padding: 5px 14px; border: 0; border-radius: var(--r);
+  background: transparent; color: var(--c-dim); cursor: pointer;
+}
+.seg button[aria-pressed="true"] {
+  background: var(--c-sel); color: var(--c-fg); box-shadow: inset 0 0 0 1px var(--c-line);
+}
+.seg button:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.card {
+  border: 1px solid var(--c-line); border-radius: var(--r-lg); overflow: hidden;
+  background: var(--c-bg); cursor: pointer; text-align: left; padding: 0;
+  font: inherit; color: inherit; display: flex; flex-direction: column;
+}
+.card:hover { border-color: var(--c-dim); }
+.card[aria-pressed="true"] { border-color: var(--c-accent); box-shadow: 0 0 0 1px var(--c-accent); }
+.card:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+
+/* 卡片里的小 demo：一个微缩的应用截面，用那套主题自己的颜色 */
+.mini { height: 92px; display: grid; grid-template-columns: 34% 1fr; font-size: 6.5px; line-height: 1.5; }
+.mini .m-side { padding: 5px 4px; display: flex; flex-direction: column; gap: 3px; }
+.mini .m-row { display: flex; align-items: center; gap: 3px; }
+.mini .m-bar { height: 3px; border-radius: var(--r-xs); display: block; }
+.mini .m-main { padding: 5px 6px; display: flex; flex-direction: column; gap: 2.5px; overflow: hidden; }
+.mini .m-top { height: 8px; display: flex; align-items: center; gap: 3px; padding: 0 4px; }
+.mini .m-dot { width: 3px; height: 3px; border-radius: 50%; flex: 0 0 auto; }
+
+.card-foot {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border-top: 1px solid var(--c-line); background: var(--c-chrome);
+}
+.card-foot .nm { font-weight: 600; color: var(--c-fg); font-size: var(--t-sm); letter-spacing: 0.02em; }
+.card-foot .check { color: var(--c-accent); font-size: var(--t); }
+.card-foot .sw { margin-left: auto; display: flex; gap: 2px; }
+.card-foot .sw i { width: 7px; height: 7px; border-radius: var(--r-xs); display: block; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---------- 历史会话视图 ---------- */
+.panel-wide { width: min(900px, 100%); height: min(640px, 100%); }
+.panel-head .subtle { color: var(--c-dim); font-size: var(--t-sm); margin-left: 4px; }
+
+.hist-tools {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  padding: 12px 16px; border-bottom: 1px solid var(--c-line);
+}
+.search {
+  flex: 1 1 220px; min-width: 0; font: inherit; font-size: var(--t);
+  padding: 6px 10px; border-radius: var(--r);
+  background: var(--c-bg); color: var(--c-fg); border: 1px solid var(--c-line);
+}
+.search::placeholder { color: var(--c-dim); }
+.search:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+
+.chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.chip {
+  font: inherit; font-size: var(--t-sm); padding: 4px 10px; border-radius: var(--r-pill); cursor: pointer;
+  background: var(--c-bg); color: var(--c-dim); border: 1px solid var(--c-line);
+}
+.chip[aria-pressed="true"] { background: var(--c-sel); color: var(--c-fg); border-color: var(--c-accent); }
+.chip:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+
+.hist-list { flex: 1 1 auto; overflow: auto; padding: 6px 8px 10px; }
+.hist-row {
+  width: 100%; display: grid; grid-template-columns: auto 1fr; gap: 4px; align-items: start;
+  border-radius: var(--r); border: 1px solid transparent;
+}
+/* 星标与"点开会话"是两个动作，所以是两个可点区域 —— 不能让收藏顺手把会话起起来 */
+.hist-row .hit {
+  min-width: 0; cursor: pointer; text-align: left; font: inherit; color: inherit;
+  border: 0; background: none;
+  display: grid; grid-template-columns: 76px 1fr auto; gap: 10px; align-items: baseline;
+  padding: 8px 10px 8px 2px; border-radius: var(--r);
+}
+.hist-row .star {
+  cursor: pointer; padding: 8px 6px 0 8px; color: var(--c-dim);
+  font-size: var(--t-md); line-height: 1.2; user-select: none;
+  border: 0; background: none; font-family: inherit;
+}
+.hist-row .star[aria-pressed="true"] { color: var(--c-accent); }
+.hist-row .star:hover { color: var(--c-fg); }
+.hist-row .star:focus-visible,
+.hist-row .hit:focus-visible { outline: 2px solid var(--c-accent); outline-offset: -1px; border-radius: var(--r); }
+.hist-row:hover { background: var(--c-sel); border-color: var(--c-line); }
+.hist-row[data-dead="1"] .hit { cursor: not-allowed; }
+.hist-row[data-dead="1"]:hover { background: none; border-color: transparent; }
+
+.hist-row .ag { color: var(--c-dim); font-size: var(--t-sm); }
+.hist-row .mid { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.hist-row .cwd {
+  color: var(--c-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--mono); font-size: var(--t-sm);
+}
+.hist-row[data-dead="1"] .cwd { color: var(--c-dim); text-decoration: line-through; }
+/* 宽面板放得下，第二行只截一行 */
+.hist-row .lbl {
+  color: var(--c-dim); font-size: var(--t-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hist-row .lbl .sid { margin-right: 6px; }
+.hist-row .lbl.none { opacity: 0.55; font-style: italic; }
+.hist-row .when {
+  color: var(--c-dim); font-size: var(--t-sm); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.hist-row .flag { color: var(--c-dim); font-size: var(--t-sm); }
+
+.hist-empty { padding: 28px 12px; text-align: center; color: var(--c-dim); font-size: var(--t); }
+
+.pane { height: 100%; }
+
+/* ---------- 新建会话选择器 ---------- */
+.row { display: flex; gap: 8px; align-items: center; }
+.row.end { justify-content: flex-end; }
+
+.btn-ghost, .btn-primary {
+  font: inherit; font-size: var(--t); padding: 6px 14px; border-radius: var(--r); cursor: pointer;
+  border: 1px solid var(--c-line);
+}
+.btn-ghost { background: var(--c-bg); color: var(--c-dim); }
+.btn-ghost:hover { color: var(--c-fg); border-color: var(--c-dim); }
+.btn-primary { background: var(--c-sel); color: var(--c-fg); font-weight: 600; border-color: var(--c-accent); }
+.btn-primary:hover:not(:disabled) { box-shadow: 0 0 0 1px var(--c-accent); }
+.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; border-color: var(--c-line); }
+.btn-ghost:focus-visible, .btn-primary:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+
+#newError { color: var(--c-fg); background: var(--c-sel); border: 1px solid var(--c-line);
+            border-radius: var(--r); padding: 8px 10px; font-size: var(--t); }
+#newError[hidden] { display: none; }
+
+/* ---------- 恢复面板 ---------- */
+.panel-foot {
+  display: flex; gap: 8px; justify-content: flex-end; align-items: center;
+  padding: 12px 16px; border-top: 1px solid var(--c-line);
+}
+
+/* 侧栏里「未启动」的成员 */
+/* 「未启动」时才出现：点下去会执行什么。比第二行更弱一层 —— 它是机器的话，不是会话的意思。 */
+.sess .cmd {
+  font-family: var(--mono); font-size: var(--t-xs); color: var(--c-dim); opacity: 0.7;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 行内动作：**悬停或聚焦才出现**。
+   此前每一行都常驻一个 ✕，十行就是十个恒亮的删除号，跟真正要读的内容抢注意力。
+   用 opacity 而不是 display —— 后者出现时会把整行的布局顶一下。 */
+.sess .end {
+  margin-left: 6px; border: 0; background: none; color: var(--c-dim);
+  font: inherit; font-size: var(--t-sm); cursor: pointer; padding: 0 3px; border-radius: var(--r-sm);
+  opacity: 0;
+}
+.sess:hover .end, .sess:focus-visible .end, .sess:focus-within .end { opacity: 1; }
+.sess .end:hover { color: var(--c-fg); background: var(--c-line); }
+/* 收藏区块：与工作集并列，各自滚动。给它一个上限，别把工作集挤没了。 */
+.fav-wrap {
+  flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column;
+  border-top: 1px solid var(--c-line); max-height: 45%;
+}
+.fav-head .count {
+  margin-left: auto; margin-right: 2px; font-variant-numeric: tabular-nums;
+}
+.fav-head .car { color: var(--c-accent); opacity: 1; }
+.fav-tree { overflow: auto; padding-bottom: 6px; }
+.sess.fav { padding-left: 24px; }
+.sess.fav .folder {
+  color: var(--c-dim); font-size: var(--t-sm); margin-left: auto;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px;
+}
+/* 收藏区里每一条本来就是收藏，星星在这里**不承担状态**，它只是移出按钮。
+   所以默认压暗，悬停才亮 —— 与工作集那个 ✕ 同一套语言。 */
+/* 收藏区里每条本来就是收藏，星星在这里不承担状态，它只是移出按钮 —— 与 ✕ 同一套语言 */
+.sess.fav .end.star { color: var(--c-dim); margin-left: 4px; }
+.sess.fav .end.star:hover { color: var(--c-accent); background: var(--c-line); }
+.sess.dead { opacity: 0.5; cursor: not-allowed; }
+.sess.dead:hover { background: none; }
+
+/* 终端区空态。刻意压得很轻 —— 它是主区域的静默状态，不是要抢注意力的欢迎页。 */
+.term-empty {
+  height: 100%; display: flex; flex-direction: column; justify-content: center;
+  gap: 8px; padding: 0 clamp(24px, 8vw, 96px); max-width: 62ch;
+}
+.te-title { color: var(--c-fg); font-size: var(--t-lg); font-weight: 600; letter-spacing: -0.01em; }
+.te-line { color: var(--c-dim); font-size: var(--t); line-height: 1.75; }
+.te-line b { color: var(--c-fg); font-weight: 600; }
+.term-empty[hidden] { display: none; }
+
+/* 上次留下的会话。整条横幅只有一行高 —— 它是提示，不是任务。 */
+.resume-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 0 10px 8px; padding: 7px 9px;
+  background: var(--c-sel); border: 1px solid var(--c-line); border-radius: var(--r);
+  font-size: var(--t-sm); color: var(--c-dim);
+}
+.resume-bar[hidden] { display: none; }
+.resume-bar .txt { flex: 1 1 auto; }
+.resume-bar b { color: var(--c-fg); font-variant-numeric: tabular-nums; }
+.resume-bar .btn-ghost.sm { padding: 2px 8px; font-size: var(--t-sm); }
+.resume-bar .x {
+  border: 0; background: none; color: var(--c-dim); font: inherit; font-size: var(--t-sm);
+  cursor: pointer; padding: 0 3px; border-radius: var(--r-sm);
+}
+.resume-bar .x:hover { color: var(--c-fg); background: var(--c-line); }
+.resume-bar .note { flex: 1 0 100%; color: var(--c-dim); font-size: var(--t-xs); }
+.resume-bar .note:empty { display: none; }
+
+/* 快捷键表 */
+.keys { display: flex; flex-direction: column; }
+.krow {
+  display: grid; grid-template-columns: 148px 1fr; gap: 14px; align-items: center;
+  padding: 7px 2px; border-bottom: 1px solid var(--c-line);
+}
+.krow:last-child { border-bottom: 0; }
+.krow kbd {
+  font-family: var(--mono); font-size: var(--t-sm); color: var(--c-fg);
+  background: var(--c-sel); border: 1px solid var(--c-line); border-radius: var(--r-sm);
+  padding: 2px 7px; justify-self: start;
+}
+.krow span { color: var(--c-dim); font-size: var(--t); }
+/* 「留给终端的键」那几条：列出来是为了说明我们**没有**占用它们 */
+.krow.dim kbd { opacity: 0.6; }
+.krow.dim span { opacity: 0.75; }
+
+/* 敲过铃、你还没去看。用主题的强调色 + 一圈光环，和状态圆点区分开。 */
+.pip.bell, .dot.bell { box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 28%, transparent); }
+.sess .state { transition: color var(--dur-fast) var(--ease); }
+
+/* 右键菜单 */
+.ctx {
+  position: fixed; z-index: 50; min-width: 168px; padding: 4px;
+  background: var(--c-chrome); border: 1px solid var(--c-line); border-radius: var(--r);
+  box-shadow: 0 12px 32px -8px rgb(0 0 0 / 0.55);
+  animation: panel-in var(--dur-fast) var(--ease);
+}
+.ctx-item {
+  display: block; width: 100%; text-align: left; font: inherit; font-size: var(--t);
+  padding: 6px 10px; border: 0; border-radius: var(--r-sm);
+  background: none; color: var(--c-fg); cursor: pointer;
+}
+.ctx-item:hover, .ctx-item:focus-visible { background: var(--c-sel); outline: 0; }
+.ctx-item.danger { color: var(--c-dim); }
+.ctx-item.danger:hover, .ctx-item.danger:focus-visible { color: var(--c-fg); }
+
+.side-empty { padding: 20px 14px; color: var(--c-dim); font-size: var(--t-sm); line-height: 1.7; }
