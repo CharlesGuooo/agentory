@@ -209,7 +209,10 @@ if (!agentory) {
   });
 
   // ---------- 设置 ----------
-  $("gear").addEventListener("click", openSettings);
+  $("gear").addEventListener("click", () => {
+    openSettings();
+    void loadSumState();
+  });
   $("settingsClose").addEventListener("click", closeSettings);
   $("scrim").addEventListener("click", (e) => {
     if (e.target === $("scrim")) closeSettings();
@@ -248,7 +251,7 @@ if (!agentory) {
         agent: f.agent,
         sessionId: f.sessionId,
         cwd: f.cwd,
-        label: f.label ?? null,
+        label: summaryOf(f.agent, f.sessionId) ?? f.label ?? null,
         dead: favMissing.has(favoriteKey(f)),
       })),
     );
@@ -284,7 +287,7 @@ if (!agentory) {
       agents: [...pickedAgents] as AgentId[],
     });
     renderHistory(
-      shown.map((s) => toHistoryRow(s, isStarred(s))),
+      shown.map((s) => toHistoryRow(s, isStarred(s), summaryOf(s.agent, s.sessionId))),
       allSessions.length,
       shown.length,
     );
@@ -533,6 +536,124 @@ if (!agentory) {
     renderBanner();
   });
 
+  // ---------- 摘要（D-7 第 1 层）----------
+  /**
+   * 摘要是 `labelOf` 优先级链的第一位：摘要 ?? agent 自带标题 ?? 开头那句。
+   * 界面代码不用改 —— 链早就写好了，这里只是把第一位填上。
+   */
+  const summaries = new Map<string, string>();
+  const sumKey = (agent: string, id: string | null): string => `${agent}|${id ?? ""}`;
+  const summaryOf = (agent: string, id: string | null): string | undefined =>
+    id === null ? undefined : summaries.get(sumKey(agent, id));
+
+  async function refreshSummaries(): Promise<void> {
+    for (const s of await api.summaryAll()) summaries.set(sumKey(s.agent, s.sessionId), s.text);
+    for (const v of views) v.label = summaryOf(v.agent, v.sessionId) ?? v.label;
+    paint();
+    refreshFavorites();
+    if (historyOpen()) refreshHistory();
+  }
+
+  function renderSumState(st: Awaited<ReturnType<typeof api.summaryState>>): void {
+    const on = st.enabled;
+    ($("sumToggle") as HTMLButtonElement).textContent = on ? "已开启" : "关闭";
+    $("sumToggle").setAttribute("aria-pressed", String(on));
+    $("sumKeyRow").hidden = !on;
+    $("sumActions").hidden = !on || !st.hasKey;
+    ($("sumKey") as HTMLInputElement).disabled = st.keyFromEnv;
+    ($("sumKey") as HTMLInputElement).placeholder = st.keyFromEnv
+      ? "已由 DEEPSEEK_API_KEY 环境变量提供"
+      : st.hasKey
+        ? "已保存（重新填写可覆盖）"
+        : "DeepSeek API key";
+    // 费用写在**常驻**状态行里，不写在点完之后的进度行里 ——
+    // 点完才告诉你要花多少，那不叫知情。单条价钱不需要知道总数，也就不会被异步结果盖掉。
+    // 估算依据：实测载荷约 1200 输入 token，输出 50。2026-08-16 起改峰谷计费，故标日期。
+    const per = (1200 * st.price.in + 50 * st.price.out) / 1e6;
+    $("sumStatus").textContent = on
+      ? `已缓存 ${st.cached} 条 · ${st.model} · 每条约 $${per.toFixed(4)}（估算，价格查证于 ${st.price.checkedAt}）`
+      : "关闭时完全离线，第二行退回「开头那句话」";
+  }
+
+  const loadSumState = (): Promise<void> => api.summaryState().then(renderSumState);
+
+  $("sumToggle").addEventListener("click", () => {
+    const on = $("sumToggle").getAttribute("aria-pressed") === "true";
+    void api.summarySetEnabled(!on).then(renderSumState);
+  });
+  $("sumKeySave").addEventListener("click", () => {
+    const box = $("sumKey") as HTMLInputElement;
+    void api.summarySetKey(box.value).then((st) => {
+      box.value = "";
+      renderSumState(st);
+    });
+  });
+
+  /** 拿**你自己的**一条会话渲染真实请求体。没有比这更直接的证明方式。 */
+  $("sumPeek").addEventListener("click", () => {
+    // 再点一次收起来。展开了就没法关掉，那个按钮就等于只能按一次
+    if (!$("sumPeekBox").hidden) {
+      $("sumPeekBox").hidden = true;
+      return;
+    }
+    const v = views.find((x) => x.sessionId !== null) ?? null;
+    const f = favorites[0];
+    const ref = v ? { agent: v.agent as AgentId, sessionId: v.sessionId! } : f ? { agent: f.agent, sessionId: f.sessionId } : null;
+    if (!ref) {
+      $("sumPeekBox").textContent = "工作集和收藏都是空的，先加一条会话再看";
+      $("sumPeekBox").hidden = false;
+      return;
+    }
+    void api.summaryPreview(ref.agent, ref.sessionId).then((t) => {
+      $("sumPeekBox").textContent = t;
+      $("sumPeekBox").hidden = false;
+    });
+  });
+
+  function runSummaries(refs: { agent: AgentId; sessionId: string }[]): void {
+    if (refs.length === 0) {
+      $("sumProgress").textContent = "没有需要摘要的会话";
+      return;
+    }
+    $("sumProgress").textContent = `准备摘要 ${refs.length} 条…`;
+    $("sumStop").hidden = false;
+    void api.summaryRun(refs).then((r) => {
+      $("sumStop").hidden = true;
+      $("sumProgress").textContent = r.error
+        ? r.error
+        : `完成：成功 ${r.ok} 条${r.failed ? `，失败 ${r.failed} 条` : ""}`;
+      void refreshSummaries();
+      void loadSumState();
+    });
+  }
+
+  // 全部历史是几百条串行，跑十几分钟且在花钱 —— 必须能中途叫停
+  $("sumStop").addEventListener("click", () => {
+    $("sumProgress").textContent = "正在停…（当前这条跑完就停）";
+    void api.summaryStop();
+  });
+
+  $("sumRunMine").addEventListener("click", () => {
+    const refs = [
+      ...views.filter((v) => v.sessionId !== null).map((v) => ({ agent: v.agent as AgentId, sessionId: v.sessionId! })),
+      ...favorites.map((f) => ({ agent: f.agent, sessionId: f.sessionId })),
+    ];
+    runSummaries([...new Map(refs.map((r) => [`${r.agent}|${r.sessionId}`, r])).values()]);
+  });
+  $("sumRunAll").addEventListener("click", () => {
+    // 全部历史要先扫一遍 —— 扫描本身是本地的，不外发（D-8 两个开关独立）
+    void api.listSessions().then((r) => {
+      allSessions = r.sessions;
+      runSummaries(r.sessions.map((s) => ({ agent: s.agent, sessionId: s.sessionId })));
+    });
+  });
+  api.onSummaryProgress((p) => {
+    $("sumProgress").textContent =
+      `正在摘要 ${p.done}/${p.total}` +
+      (p.failed ? ` · 失败 ${p.failed}` : "") +
+      (p.last ? ` · ${p.last.slice(0, 30)}` : "");
+  });
+
   // ---------- 右键菜单 ----------
   /**
    * 行内动作改成悬停才出现之后，不常用但需要有的动作放这里 ——
@@ -718,6 +839,8 @@ if (!agentory) {
     const [cols, rows] = dims();
     void api.workspaceAdd(entry).then(() => api.workspaceRestoreAll([entry], cols, rows));
   });
+
+  void refreshSummaries();
 
   // ---------- 启动：读收藏夹 ----------
   void api.favoritesState().then((st) => {

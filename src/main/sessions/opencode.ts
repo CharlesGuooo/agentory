@@ -5,6 +5,12 @@ import { DatabaseSync } from "node:sqlite";
 import { makeSession } from "./scan";
 import type { ScanResult, Session } from "./types";
 
+/**
+ * 锁等待上限。锁是毫秒级的，2 秒足够；再长就该让界面先出来而不是继续等。
+ * 导出是因为读消息那边（`messages.ts`）开的是同一个库，必须用同一个值。
+ */
+export const BUSY_TIMEOUT_MS = 2000;
+
 /** OpenCode 把所有会话放在一个 SQLite 库里。 */
 export const defaultOpenCodeDb = (): string =>
   join(homedir(), ".local", "share", "opencode", "opencode.db");
@@ -31,7 +37,12 @@ export function scanOpenCode(dbPath: string = defaultOpenCodeDb()): ScanResult {
   const sessions: Session[] = [];
 
   // 只读打开。库可能正被 opencode 自己写着（有 WAL），我们绝不能碰它。
-  const db = new DatabaseSync(dbPath, { readOnly: true });
+  //
+  // `timeout` 不是可有可无的：实测并发读同一个库时会抛 `database is locked`，
+  // 而这个异常会让**全部 166 条 opencode 会话从列表里整块消失**，
+  // 用户只看到 opencode 那一栏空了。锁是暂时的，等一下就好 ——
+  // 这正是 SQLite 的 busy_timeout 存在的理由，不用自己写重试。
+  const db = new DatabaseSync(dbPath, { readOnly: true, timeout: BUSY_TIMEOUT_MS });
   try {
     const rows = db
       .prepare("SELECT id, directory, title, time_updated FROM session")

@@ -403,6 +403,16 @@ async function smokeShots(win: BrowserWindow, dir: string): Promise<void> {
   await wait(600);
   await shoot(win, dir, "03-设置");
 
+  // 摘要那块默认是收起的，收起状态看不出样式对不对 —— 展开了再截一张。
+  // （`.btn-search` 完全没有 CSS 那次，就是靠截图才发现的。）
+  await run(win, 'document.getElementById("sumToggle").click()');
+  await wait(900);
+  await run(win, 'document.getElementById("sumPeek").click()');
+  await wait(2500);
+  await shoot(win, dir, "03b-设置-摘要展开");
+  await run(win, 'document.getElementById("sumToggle").click()');
+  await wait(600);
+
   await run(win, 'document.getElementById("settingsClose").click()');
   await wait(300);
   await run(win, 'document.dispatchEvent(new KeyboardEvent("keydown",{code:"F1",bubbles:true}))');
@@ -498,6 +508,79 @@ async function smokeKeys(win: BrowserWindow): Promise<void> {
   );
 }
 
+/** 摘要设置：开关 → 状态 → 「看看会发送什么」渲染出真实载荷。 */
+async function smokeSummary(win: BrowserWindow): Promise<void> {
+  await run(win, 'document.getElementById("gear").click()');
+  await wait(600);
+  say(
+    "smoke-sum",
+    await run(
+      win,
+      `(() => {
+        const t = document.getElementById("sumToggle");
+        return JSON.stringify({ 默认: t.getAttribute("aria-pressed"),
+          默认文案: document.getElementById("sumStatus").textContent });
+      })()`,
+    ),
+  );
+  // 开关走 IPC，是异步的 —— 点完要等它回来再读状态
+  await run(win, 'document.getElementById("sumToggle").click()');
+  await wait(1200);
+  say(
+    "smoke-sum-on",
+    await run(
+      win,
+      `JSON.stringify({
+        开关: document.getElementById("sumToggle").getAttribute("aria-pressed"),
+        文案: document.getElementById("sumToggle").textContent,
+        出现填key的框: !document.getElementById("sumKeyRow").hidden,
+        动作区: !document.getElementById("sumActions").hidden,
+        状态: document.getElementById("sumStatus").textContent,
+      })`,
+    ),
+  );
+  // 没有 key 时点「开跑」不会花一分钱：主进程直接回「还没有填 API key」
+  await run(win, 'document.getElementById("sumRunMine").click()');
+  await wait(1500);
+  say(
+    "smoke-sum-run",
+    await run(
+      win,
+      `JSON.stringify({
+        进度行: document.getElementById("sumProgress").textContent,
+        停止键跑完收回: document.getElementById("sumStop").hidden,
+      })`,
+    ),
+  );
+  await run(win, 'document.getElementById("sumPeek").click()');
+  await wait(2500);
+  say(
+    "smoke-sum-peek",
+    await run(
+      win,
+      `(() => {
+        const box = document.getElementById("sumPeekBox");
+        const t = box.textContent || "";
+        return JSON.stringify({
+          展开了: !box.hidden,
+          字数: t.length,
+          含工具标记: /tool_result"|tool_use"/.test(t),
+          开头: t.slice(0, 90),
+        });
+      })()`,
+    ),
+  );
+  // 关回去，别把状态留给下一次
+  await run(win, 'document.getElementById("sumToggle").click(); document.getElementById("settingsClose").click()');
+  // 展开了就得能收回去 —— 只能按一次的按钮是个假开关
+  await run(win, 'document.getElementById("sumPeek").click()');
+  await wait(400);
+  say(
+    "smoke-sum-peek-close",
+    await run(win, 'JSON.stringify({ 再点一次收起: document.getElementById("sumPeekBox").hidden })'),
+  );
+}
+
 /** 挂上冒烟流程。`quit` 在最后一步被调用。 */
 export function attachSmoke(win: BrowserWindow, quit: () => void): void {
   const delay = Number(env("DELAY") ?? 1500);
@@ -517,6 +600,7 @@ export function attachSmoke(win: BrowserWindow, quit: () => void): void {
       if (env("SHOT")) await smokeShots(win, env("SHOT")!);
       if (env("FAVORITE")) await smokeFavorite(win);
       if (env("START_MEMBER") === "1") await smokeStartMember(win);
+      if (env("SUMMARY") === "1") await smokeSummary(win);
       if (env("KEYS") === "1") await smokeKeys(win);
       if (env("HISTPERF") === "1") await smokeHistPerf(win);
       if (env("BELL") === "1") await smokeBell(win);

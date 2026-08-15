@@ -16,9 +16,15 @@ export interface ThemeState {
 interface Settings {
   themeId: string;
   mode: ModeSetting;
+  /**
+   * 生成摘要 = **内容出境**，所以按 D-8 默认关，且必须是用户显式打开的。
+   * 与主题共用这份文件 —— 一类记录一个文件，但开关就是设置，不必另起一份。
+   * **API key 不在这里**：这份文件用户会自己打开手改，密钥要加密单独存。
+   */
+  summariesEnabled: boolean;
 }
 
-const DEFAULTS: Settings = { themeId: "graphite", mode: "system" };
+const DEFAULTS: Settings = { themeId: "graphite", mode: "system", summariesEnabled: false };
 
 const settingsPath = (): string => join(app.getPath("userData"), "settings.json");
 const themesDir = (): string => join(app.getPath("userData"), "themes");
@@ -32,12 +38,19 @@ function readSettings(): Settings {
         raw.mode === "light" || raw.mode === "dark" || raw.mode === "system"
           ? raw.mode
           : DEFAULTS.mode,
+      summariesEnabled: raw.summariesEnabled === true,
     };
   } catch {
     // 没有设置文件、或文件坏了 —— 用默认值，不是错误
     return { ...DEFAULTS };
   }
 }
+
+/** 给摘要模块用的开关读写。设置文件只有一份，不为一个布尔值再开一个。 */
+export const summariesEnabled = {
+  get: (): boolean => readSettings().summariesEnabled,
+  set: (v: boolean): void => writeSettings({ ...readSettings(), summariesEnabled: v }),
+};
 
 function writeSettings(s: Settings): void {
   mkdirSync(app.getPath("userData"), { recursive: true });

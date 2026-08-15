@@ -32,9 +32,15 @@ because the differences are not guessable: Codex is the only one that uses a sub
 app. Reopening offers to bring them all back; nothing is restarted without you asking,
 because restarting an agent session costs tokens.
 
-**Summarises each session** — *not built yet, see [Status](#status)*. Until it is, each row
-shows the first informative message from the session, which is readable for about 90% of
-them.
+**Summarises each session.** One sentence saying what the session was about, so you can
+tell two `a3f9c1e2` apart. This is **off by default and needs your own DeepSeek API key** —
+turning it on is the only thing in agentory that sends anything off your machine, so it is
+a deliberate, separate switch. Before you enable it, the settings panel will show you the
+**exact text that would be sent** for one of your own sessions.
+
+Tool output is excluded structurally — the payload only keeps `text` parts, and your source
+code lives in tool results. With summaries off, every row falls back to the first
+informative message from the session, which is readable for about 90% of them.
 
 ### Reading a session's working directory
 
@@ -83,18 +89,23 @@ vacuously.
 
 ## Status
 
-Working: session index, resume, workspace persistence, favourites, themes, keyboard
-shortcuts, terminal-bell notifications.
+Working: session index, resume, workspace persistence, favourites, session summaries,
+themes, keyboard shortcuts, terminal-bell notifications.
 
 Not built yet:
 
-- **Session summaries.** The one genuinely novel feature, and the reason the second line
-  of each row currently shows a truncated first message instead.
 - **Auto-update.** There is no release feed yet, so there is nothing to update from.
 - **Split panes.** One session is visible at a time; switching is by tab or `Ctrl+Tab`.
 
-Known limitation: a session created inside agentory cannot be added to favourites until it
-has an id, and agents only assign one after the session starts.
+Known limitations:
+
+- A session created inside agentory cannot be added to favourites until it has an id, and
+  agents only assign one after the session starts.
+- Opening the history dialog takes **1–2 seconds** on a 437-session corpus. agentory
+  deliberately keeps no index database and rescans instead; that decision needs revisiting
+  as corpora grow.
+- Summaries skip OpenCode sessions, because OpenCode already stores a model-generated
+  title that is better than what we would produce.
 
 ## Keyboard shortcuts
 

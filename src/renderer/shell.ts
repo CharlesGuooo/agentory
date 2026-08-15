@@ -334,12 +334,13 @@ export function toHistoryRow(
     cwdExists: boolean;
   },
   starred = false,
+  summary?: string,
 ): HistoryRow {
   return {
     agent: s.agent,
     cwd: esc(s.cwd ?? "（工作目录未知）"),
     cwdFull: esc(s.cwd ?? "会话文件里读不到工作目录"),
-    label: labelOf(s),
+    label: summary?.trim() || labelOf(s),
     sid: shortId(s.sessionId),
     when: when(s.lastActivity),
     dead: s.cwd === null || !s.cwdExists,

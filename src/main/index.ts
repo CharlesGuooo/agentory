@@ -3,9 +3,10 @@ import { join } from "node:path";
 import { app, BrowserWindow, ipcMain, Notification } from "electron";
 import { registerFavoritesIpc } from "./favorites/ipc";
 import { registerSessionsIpc } from "./sessions/ipc";
+import { registerSummaryIpc } from "./summary/ipc";
 import { attachSmoke, smokeEnabled } from "./smoke";
 import { killAllSessions, registerTerminalIpc } from "./terminal/ipc";
-import { registerThemeIpc } from "./theme/service";
+import { registerThemeIpc, summariesEnabled } from "./theme/service";
 import { registerWorkspaceIpc } from "./workspace/ipc";
 
 let mainWindow: BrowserWindow | null = null;
@@ -89,6 +90,7 @@ void app.whenReady().then(() => {
   registerSessionsIpc(() => mainWindow);
   registerWorkspaceIpc(() => mainWindow);
   registerFavoritesIpc();
+  registerSummaryIpc(() => mainWindow, summariesEnabled);
 
   // 主题变化时把原生窗口控件也染上色 —— 变体解析在渲染层，所以由它回传
   ipcMain.on("window:overlay", (_e, c: { color: string; symbolColor: string }) => {

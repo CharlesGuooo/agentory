@@ -1,6 +1,7 @@
 import { clipboard, contextBridge, ipcRenderer, shell } from "electron";
 import type { LaunchOptions, LaunchRequest, ResumeRequest } from "../main/sessions/ipc";
 import type { AgentId } from "../main/sessions/types";
+import type { SummaryState, SummaryText } from "../main/summary/ipc";
 import type { FavoritesState } from "../main/favorites/ipc";
 import type { Favorites, FavoriteEntry } from "../main/favorites/model";
 import type { RestoreRequest, WorkspaceState } from "../main/workspace/ipc";
@@ -93,6 +94,26 @@ const api = {
    * 是否真的弹系统通知由主进程决定 —— 它才知道窗口有没有焦点。
    */
   notifyBell: (label: string): void => ipcRenderer.send("notify:bell", { label }),
+
+  /** 摘要（D-7 第 1 层）。**默认关**，生成摘要 = 内容出境（D-8）。 */
+  summaryState: (): Promise<SummaryState> => ipcRenderer.invoke("summary:state"),
+  summarySetEnabled: (v: boolean): Promise<SummaryState> =>
+    ipcRenderer.invoke("summary:setEnabled", v),
+  summarySetKey: (k: string): Promise<SummaryState> => ipcRenderer.invoke("summary:setKey", k),
+  summaryAll: (): Promise<SummaryText[]> => ipcRenderer.invoke("summary:all"),
+  /** 拿一条真会话渲染**过滤后的真实请求体** —— 把「不会偷偷发源码」变成可验证的事实。 */
+  summaryPreview: (agent: AgentId, sessionId: string): Promise<string> =>
+    ipcRenderer.invoke("summary:preview", { agent, sessionId }),
+  summaryRun: (refs: { agent: AgentId; sessionId: string }[]): Promise<{ ok: number; failed: number; error?: string }> =>
+    ipcRenderer.invoke("summary:run", refs),
+  summaryStop: (): Promise<void> => ipcRenderer.invoke("summary:stop"),
+  onSummaryProgress: (
+    cb: (p: { done: number; total: number; ok: number; failed: number; last: string }) => void,
+  ): (() => void) => {
+    const h = (_e: unknown, p: { done: number; total: number; ok: number; failed: number; last: string }): void => cb(p);
+    ipcRenderer.on("summary:progress", h);
+    return () => void ipcRenderer.off("summary:progress", h);
+  },
 
   /** 右键菜单要用的两件小事。`clipboard` / `shell` 在 preload 里可直接用，不必绕一趟 IPC。 */
   copy: (text: string): void => clipboard.writeText(text),

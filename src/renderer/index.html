@@ -96,6 +96,32 @@
             </div>
           </section>
           <section class="field">
+            <label id="sumLabel">会话摘要</label>
+            <p class="desc">
+              把每条会话压成一句话，填进列表第二行。
+              <b>生成摘要要把会话片段发给 DeepSeek</b> —— 内容会离开这台机器，所以默认关闭。
+              发送的只有<b>首条提问</b>和<b>过滤掉工具输出后的结尾片段</b>，上限 4 KB；
+              工具输出里藏着你的源码，一个字都不会发出去。
+            </p>
+            <div class="row">
+              <button class="btn-ghost" id="sumToggle" type="button" aria-pressed="false">关闭</button>
+              <span class="desc" id="sumStatus"></span>
+            </div>
+            <div class="row" id="sumKeyRow" hidden>
+              <input id="sumKey" class="search" type="password" placeholder="DeepSeek API key"
+                     autocomplete="off" spellcheck="false" />
+              <button class="btn-ghost" id="sumKeySave" type="button">保存</button>
+            </div>
+            <div class="row" id="sumActions" hidden>
+              <button class="btn-ghost" id="sumPeek" type="button">看看会发送什么</button>
+              <button class="btn-ghost" id="sumRunMine" type="button">摘要工作集与收藏</button>
+              <button class="btn-ghost" id="sumRunAll" type="button">摘要全部历史</button>
+              <button class="btn-ghost" id="sumStop" type="button" hidden>停止</button>
+            </div>
+            <p class="desc" id="sumProgress"></p>
+            <pre class="peek" id="sumPeekBox" hidden></pre>
+          </section>
+          <section class="field">
             <label>主题</label>
             <p class="desc" id="themeDesc">把自己的 JSON 放进主题目录即可新增</p>
             <div class="cards" id="cards"></div>

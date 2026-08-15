@@ -461,4 +461,16 @@ body { display: grid; grid-template-rows: var(--titlebar-h) 1fr; }
 .ctx-item.danger { color: var(--c-dim); }
 .ctx-item.danger:hover, .ctx-item.danger:focus-visible { color: var(--c-fg); }
 
+/* 「看看会发送什么」的展开框。等宽字体 —— 这里展示的是要发出去的原文，
+   任何美化都会让人怀疑我们改过它。 */
+.peek {
+  /* 220px 而不是 300 —— 实测 300 时这一框占掉整个设置面板，把「主题」挤出视野。
+     它是**证据**不是读物：看头几行就知道发的是什么，要细看可以往下滚。 */
+  margin-top: 10px; max-height: 220px; overflow: auto;
+  background: var(--c-bg); border: 1px solid var(--c-line); border-radius: var(--r);
+  padding: 10px 12px; font-family: var(--mono); font-size: var(--t-sm);
+  color: var(--c-fg); white-space: pre-wrap; word-break: break-word; line-height: 1.6;
+}
+.peek[hidden] { display: none; }
+
 .side-empty { padding: 20px 14px; color: var(--c-dim); font-size: var(--t-sm); line-height: 1.7; }

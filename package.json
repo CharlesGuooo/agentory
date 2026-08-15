@@ -16,7 +16,8 @@
     "verify:node-pty": "electron scripts/verify-node-pty.cjs",
     "icons": "electron scripts/make-icons.cjs",
     "package": "electron-vite build && electron-builder",
-    "package:dir": "electron-vite build && electron-builder --dir"
+    "package:dir": "electron-vite build && electron-builder --dir",
+    "perf": "vitest run src/main/sessions/real-machine.test.ts --no-file-parallelism -t 单条"
   },
   "dependencies": {
     "node-pty": "^1.1.0"
