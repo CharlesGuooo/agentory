@@ -1,5 +1,6 @@
 import { existsSync, statSync } from "node:fs";
 import { spawn as ptySpawn, type IPty } from "node-pty";
+import { cleanEnv } from "./env";
 
 /**
  * 一个 PTY 会话。刻意不 import Electron —— 这样它能在纯 Node 下被 vitest 起真进程测试，
@@ -41,7 +42,11 @@ export function spawnSession(opts: SpawnOptions): PtySession {
       cols: opts.cols,
       rows: opts.rows,
       cwd: opts.cwd,
-      env: opts.env ?? process.env,
+      // **必须清洗**（Q10）：从一个 agent 会话里启动 agentory 时，父 agent 注入的
+      // 运行时标记会原样传给子进程。实测 `CLAUDE_CODE_CHILD_SESSION` 会让新起的
+      // claude 关掉 transcript 保存 —— 而那正是这个产品要索引的全部内容。
+      // 不清洗的话，agentory 会亲手销毁它赖以存在的数据。
+      env: cleanEnv(opts.env ?? process.env),
       // 不设 COLORTERM。实测五个 agent 都无视它、一律直发 24 位真彩
       // （见 DESIGN.md D-3 的实测修正），所以那个"降级到 16 色"的旋钮不存在。
     });
