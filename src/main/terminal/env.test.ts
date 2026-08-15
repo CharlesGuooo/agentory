@@ -80,7 +80,19 @@ describe("真机验证：子进程拿到的环境", () => {
       });
       let out = "";
       s.onData((c) => (out += c));
-      await new Promise((r) => setTimeout(r, 2500));
+      /**
+       * **轮询到输出齐了，不固定等。**
+       * 这个项目里固定等待时长已经造成过两次偶发红（`resume-real` 与
+       * 结束会话的孤儿检查）—— 机器一忙就拍到半截输出，而周期性变红的测试
+       * 会训练人忽略红色。这里等到 `set` 把 PATH 打出来、且输出不再增长为止。
+       */
+      const deadline = Date.now() + 20_000;
+      let last = -1;
+      while (Date.now() < deadline) {
+        if (out.includes("PATH=") && out.length === last) break;
+        last = out.length;
+        await new Promise((r) => setTimeout(r, 250));
+      }
       s.kill();
 
       expect(out).not.toContain("CLAUDE_CODE_CHILD_SESSION");
