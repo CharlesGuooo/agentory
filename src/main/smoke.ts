@@ -732,6 +732,21 @@ async function smokeHarness(win: BrowserWindow): Promise<void> {
   )) as string;
   say("smoke-hx-target", before);
 
+  /**
+   * **没有可装的目标就到此为止，不要接着点 null。**
+   *
+   * 装卸这一段的前置条件是「至少有一个 skill，而 grok 还没有它」。一台空机器上
+   * 那个条件不成立，`找到目标: false`，而下一行照样 `querySelector(...).click()`
+   * → `Cannot read properties of null` → 整个冒烟抛错。
+   *
+   * 这是今天第三次撞上同一个形状（`smokeBell` 没有标签页、`smokeEnd` 没有在跑的会话）：
+   * **冒烟里的前置条件不成立时崩掉，而不是说出来。** 前提说清楚比抛错有用得多。
+   */
+  if (!(JSON.parse(before) as { 找到目标: boolean }).找到目标) {
+    check("harness", false, "没有可装的 skill（grok 已经全有了，或者这台机器一个 skill 都没有）—— 装卸这一段跳过");
+    return;
+  }
+
   await run(
     win,
     `document.querySelector('#hxBody .hx-box[data-agent="grok"][data-skill="' + window.__hxTarget + '"]').click()`,
