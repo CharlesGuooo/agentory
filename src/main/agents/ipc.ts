@@ -167,5 +167,9 @@ export function registerAgentsIpc(getWindow: () => BrowserWindow | null, checkEn
     await refresh(false);
     const n = buildRows().filter((r) => r.hasUpdate).length;
     if (n > 0) getWindow()?.webContents.send("agents:update-available", n);
-  })();
+  })().catch((e: unknown) => {
+    // 查版本失败不该变成 unhandled rejection。`fetchLatest` 自己已经不抛了，
+    // 但缓存写盘会（盘满、userData 只读）—— 那种时候用户要的是应用照常能用。
+    process.stdout.write(`[agents] 后台查版本失败：${String(e)}\n`);
+  });
 }

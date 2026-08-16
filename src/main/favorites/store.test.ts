@@ -45,7 +45,8 @@ describe("收藏夹落盘", () => {
 
     const r = loadFavorites(p);
     expect(r.favorites.sessions).toEqual([]);
-    expect(r.warnings).toHaveLength(1);
+    // 断内容不断条数：坏读还会多带一条「原文件已备份到 …」（见 entryFile.test.ts）
+    expect(r.warnings.some((w) => w.includes("不是合法 JSON"))).toBe(true);
     // 读回原文件比对 —— 读不动就把它抹了，等于替用户销毁记录
     expect(readFileSync(p, "utf8")).toBe(junk);
   });
@@ -59,7 +60,7 @@ describe("收藏夹落盘", () => {
     const r = loadFavorites(p);
     // 第三条与第一条是同一个主键，但 store 只负责读，去重是 model 的事
     expect(r.favorites.sessions).toHaveLength(2);
-    expect(r.warnings).toHaveLength(1);
+    expect(r.warnings.filter((w) => w.startsWith("跳过条目"))).toHaveLength(1);
   });
 
   /** D-F3：没有 sessionId 的不是一条有效收藏 —— 「以后还要用这个」必须指向那一个。 */

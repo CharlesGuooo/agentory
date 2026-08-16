@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BrowserWindow } from "electron";
 import { livePids } from "./terminal/ipc";
@@ -21,19 +22,96 @@ const say = (tag: string, msg: unknown): void => {
 };
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * 断言。**这一行是这个文件从「探针」变成「测试」的分界。**
+ *
+ * 在这之前 25 个模式全部只有 `say()`：它们发现回归的前提是**有人逐行读输出、
+ * 并且记得上次的数字是多少**。开发期那个人是存在的（几个真 bug 就是这么抓到的），
+ * 发布之后不存在了 —— 于是这一千行设施等于不存在。
+ *
+ * 所以只加退出码，不加新设施：已经在打印的硬数字，挑不容争议的那些变成断言。
+ */
+const failures: string[] = [];
+const check = (tag: string, ok: boolean, msg: string): void => {
+  if (ok) return;
+  failures.push(`${tag}：${msg}`);
+  process.stdout.write(`[FAIL ${tag}] ${msg}\n`);
+};
+
 export const smokeEnabled = (): boolean => process.env["AGENTORY_SMOKE"] === "1";
 
 /** 在渲染进程里跑一段脚本。返回值原样带回。 */
 const run = (win: BrowserWindow, js: string): Promise<unknown> =>
   win.webContents.executeJavaScript(js);
 
+/**
+ * **进程会计不变量。** 主进程手上活着的 pty 数，必须等于界面说的「N 个在跑」；
+ * 每个 tab 的 key 必须唯一。
+ *
+ * 这两条的价值在于它们**不关心是哪条路径造成的偏差**。
+ * 「✕ 结束会话静默失败，25 个进程活着」那次是靠人工数进程发现的 ——
+ * 这里把那个一次性动作变成常设护栏，下一个「界面以为一个、系统里两个」的
+ * bug（重复恢复同一条会话、双击未启动的成员）会自己撞上来。
+ *
+ * 用 `parseInt` 而不是正则：文案是「3 个在跑」，`parseInt` 就够，
+ * 而 `\d` 这类转义要穿过 TS 模板串再进 `executeJavaScript`，路上很容易被吃掉。
+ */
+async function checkAccounting(win: BrowserWindow, tag: string): Promise<void> {
+  const raw = (await run(
+    win,
+    `JSON.stringify({
+      running: parseInt(document.getElementById("runningCount").textContent, 10),
+      keys: [...document.querySelectorAll("#tabs .tab")].map((t) => t.dataset.key),
+      members: [...document.querySelectorAll("#tree .sess")].map((t) => t.dataset.key),
+    })`,
+  )) as string;
+  const { running, keys, members } = JSON.parse(raw) as {
+    running: number;
+    keys: string[];
+    members: string[];
+  };
+  const pids = livePids();
+  check(
+    `会计-${tag}`,
+    pids.length === running,
+    `主进程 ${pids.length} 个 pty，界面说 ${String(running)} 个在跑`,
+  );
+  check(
+    `会计-${tag}`,
+    new Set(keys).size === keys.length,
+    `tab 的 key 有重复（同一条会话开了两个）：${keys.join(" | ")}`,
+  );
+  /**
+   * **侧栏成员的 key 也必须唯一。**
+   *
+   * key 是工作集主键，而 `viewOf` 是 `views.find(v => v.key === key)` —— 返回**第一个**。
+   * 两个成员同 key 时，点第二个的 ✕ 会去结束第一个：进程还活着、标签页还在，
+   * 而用户看到的是「我点的那一行没了」。
+   *
+   * 这件事真的发生过（END 那一刀偶发红，4 个成员时才出现）：
+   * 新建会话的 key 是 `claude|cwd:<目录>`（sessionId 为 null），
+   * **同一个目录再新建一次就是同一个 key**。
+   */
+  check(
+    `会计-${tag}`,
+    new Set(members).size === members.length,
+    `侧栏成员的 key 有重复（✕ 会结束错的那个）：${members.join(" | ")}`,
+  );
+}
+
 /** 走「新建会话」的完整点击路径：开选择器 → 选 agent → 填目录 → 按开始。 */
 async function smokeNew(win: BrowserWindow): Promise<void> {
-  const dir = JSON.stringify(env("NEW_CWD") ?? process.cwd());
+  /**
+   * 默认起在一个**每次都新建的临时目录**里，而不是 `process.cwd()`。
+   *
+   * 原来是后者，于是这个模式跨运行不幂等：工作集里会留下一条
+   * `claude|cwd:<项目目录>`，下一次再跑就撞上「同目录同 agent 只能有一条」的守卫，
+   * 报一个和被测行为无关的红。
+   */
+  const dir = JSON.stringify(env("NEW_CWD") ?? mkdtempSync(join(tmpdir(), "agentory-smoke-new-")));
   await run(win, 'document.getElementById("btnNew").click()');
   await wait(2500);
-  say(
-    "smoke-new",
+  const clicked = String(
     await run(
       win,
       `(() => {
@@ -50,20 +128,102 @@ async function smokeNew(win: BrowserWindow): Promise<void> {
       })()`,
     ),
   );
+  say("smoke-new", clicked);
+  check("new", clicked.startsWith("已点击开始"), clicked);
+
   await wait(3000);
-  say(
-    "smoke-new-after",
-    await run(
+  const raw = (await run(
+    win,
+    `JSON.stringify({
+      errShown: !document.getElementById("newError").hidden,
+      errText: document.getElementById("newError").textContent,
+      pickerStillOpen: !document.getElementById("newScrim").hidden,
+      tabs: document.querySelectorAll("#tabs .tab").length,
+      空态还在: !document.getElementById("termEmpty").hidden,
+    })`,
+  )) as string;
+  say("smoke-new-after", raw);
+  const a = JSON.parse(raw) as { errShown: boolean; errText: string; pickerStillOpen: boolean; tabs: number };
+  check("new", !a.errShown, `新建会话报错：${a.errText}`);
+  check("new", !a.pickerStillOpen, "点了开始，选择器还开着");
+  check("new", a.tabs >= 1, "点了开始，一个 tab 都没出现");
+}
+
+/**
+ * **五个 agent 各起一次，在真 Electron 里。**
+ *
+ * `terminal/resolve.ts` 自己写着：那几个用 `process.execPath` 的单元测试证明不了这件事，
+ * 因为它们在 vitest 下跑，那里 `execPath` 就是 node。而「codex / pi 被解析成
+ * `electron.exe`，在应用里根本起不来」正是这样漏过去的 ——
+ * 它当时唯一的守卫是「有人打开诊断面板读那七行路径」。
+ *
+ * 五个 agent 共用一个临时目录：主键是 `(agent, cwd)`，agent 各不相同就不会撞。
+ */
+async function smokeNewAll(win: BrowserWindow): Promise<void> {
+  const dir = JSON.stringify(env("NEW_CWD") ?? mkdtempSync(join(tmpdir(), "agentory-smoke-all-")));
+  const agents = JSON.parse(
+    (await run(
+      win,
+      `(async () => {
+        document.getElementById("btnNew").click();
+        await new Promise((r) => setTimeout(r, 2500));
+        return JSON.stringify([...document.querySelectorAll("#newAgents button")].map((b) => b.dataset.agent));
+      })()`,
+    )) as string,
+  ) as string[];
+  say("smoke-all-agents", JSON.stringify(agents));
+  check("all-agents", agents.length === 5, `新建面板里只有 ${agents.length} 个 agent 可选：${agents.join()}`);
+
+  for (const a of agents) {
+    const r = String(
+      await run(
+        win,
+        `(async () => {
+          if (document.getElementById("newScrim").hidden) document.getElementById("btnNew").click();
+          /**
+           * **轮询等 chip 出现，不能同步就找。** chip 是 launchOptions() 的 promise
+           * 回来之后才填的；上一个 agent 起成功会把选择器关掉，重新点开时它又是空的。
+           * 第一版是同步找，结果 codex 和 pi 隔一个失败一次 —— 那是测试的 bug，不是应用的。
+           */
+          const deadline = Date.now() + 8000;
+          let chip = null;
+          while (Date.now() < deadline) {
+            chip = [...document.querySelectorAll("#newAgents button")].find((b) => b.dataset.agent === ${JSON.stringify(a)});
+            if (chip) break;
+            await new Promise((r) => setTimeout(r, 200));
+          }
+          if (!chip) return "等了 8 秒也没等到 chip";
+          chip.click();
+          const box = document.getElementById("newCwd");
+          box.value = ${dir};
+          box.dispatchEvent(new Event("input"));
+          const go = document.getElementById("newGo");
+          if (go.disabled) return "开始键不可用";
+          go.click();
+          return "ok";
+        })()`,
+      ),
+    );
+    check(`all-${a}`, r === "ok", `${a}：${r}`);
+    await wait(Number(env("ALL_WAIT") ?? 9000));
+    const after = (await run(
       win,
       `JSON.stringify({
-        errShown: !document.getElementById("newError").hidden,
-        errText: document.getElementById("newError").textContent,
-        pickerStillOpen: !document.getElementById("newScrim").hidden,
+        err: document.getElementById("newError").hidden ? "" : document.getElementById("newError").textContent,
         tabs: document.querySelectorAll("#tabs .tab").length,
-        空态还在: !document.getElementById("termEmpty").hidden,
       })`,
-    ),
-  );
+    )) as string;
+    const s = JSON.parse(after) as { err: string; tabs: number };
+    say(`smoke-all-${a}`, after);
+    check(`all-${a}`, s.err === "", `${a} 启动报错：${s.err}`);
+  }
+
+  // 五个都还在。终端里到底有没有内容，看 `[dump-begin]` 那段 —— 它已经逐个转出来了
+  const tabs = JSON.parse(
+    (await run(win, `JSON.stringify([...document.querySelectorAll("#tabs .tab")].map((t) => t.dataset.key))`)) as string,
+  ) as string[];
+  say("smoke-all-tabs", JSON.stringify(tabs));
+  check("all-agents", tabs.length === agents.length, `起了 ${agents.length} 个，只剩 ${tabs.length} 个标签页`);
 }
 
 /**
@@ -71,8 +231,17 @@ async function smokeNew(win: BrowserWindow): Promise<void> {
  *
  * 用真实的搜索框而不是另加一套选择参数 —— 少一条只在测试里存在的代码路径。
  */
-async function smokeFromHistory(win: BrowserWindow, n: number): Promise<void> {
+async function smokeFromHistory(win: BrowserWindow, spec: string): Promise<void> {
   const filter = JSON.stringify(env("HISTORY_FILTER") ?? "");
+  /**
+   * `FROM_HISTORY=dup`：点**同一条**两次（间隔 200ms，第一次还在恢复中）。
+   *
+   * 默认那条路径点的是 `rows.slice(0, n)` —— **n 条不同的行**，
+   * 所以它结构上永远碰不到「同一条会话被恢复两次」。而那正是要复现的形状：
+   * 两个 pty 同时往同一个会话文件里追加。
+   */
+  const dup = spec === "dup";
+  const n = dup ? 0 : Number(spec);
   await run(win, 'document.getElementById("btnHistory").click()');
   await wait(Number(env("SCAN_WAIT") ?? 6000));
   say(
@@ -85,7 +254,7 @@ async function smokeFromHistory(win: BrowserWindow, n: number): Promise<void> {
         box.dispatchEvent(new Event("input"));
         const rows = [...document.querySelectorAll("#histList .hist-row")]
           .filter((r) => r.dataset.dead !== "1");
-        const picked = rows.slice(0, ${n});
+        const picked = ${dup ? "(rows[0] ? [rows[0]] : [])" : `rows.slice(0, ${n})`};
         picked.forEach((r) => r.click());
         const all = [...document.querySelectorAll("#histList .hist-row")];
         return JSON.stringify({
@@ -98,6 +267,23 @@ async function smokeFromHistory(win: BrowserWindow, n: number): Promise<void> {
       })()`,
     ),
   );
+  if (dup) {
+    // 第一次还在恢复中就再点一次 —— 会计不变量在收尾时判它
+    await wait(200);
+    say(
+      "smoke-hist-dup",
+      await run(
+        win,
+        `(() => {
+          const row = [...document.querySelectorAll("#histList .hist-row")]
+            .filter((r) => r.dataset.dead !== "1")[0];
+          if (!row) return "没有可点第二次的行";
+          row.click();
+          return "同一条又点了一次：" + row.querySelector(".cwd").textContent;
+        })()`,
+      ),
+    );
+  }
   await wait(Number(env("HISTORY_WAIT") ?? 12_000));
 }
 
@@ -131,8 +317,10 @@ async function smokeHistPerf(win: BrowserWindow): Promise<void> {
  * 被 HTML 解析改写而整条哑掉，且一声不响。所以它需要一个常设的守门测试。
  */
 async function smokeStartMember(win: BrowserWindow): Promise<void> {
-  say(
-    "smoke-start",
+  // `START_MEMBER=double`：点两下。`activate()` 里原本没有任何在途标志
+  // （对比 `resumeGo` 是有的），而 agent 起来要几秒 —— 双击稳稳落在那个窗口里。
+  const double = env("START_MEMBER") === "double";
+  const started = String(
     await run(
       win,
       `(() => {
@@ -140,10 +328,13 @@ async function smokeStartMember(win: BrowserWindow): Promise<void> {
         const target = rows.find((r) => r.querySelector(".state").textContent === "未启动");
         if (!target) return "侧栏里没有未启动的成员";
         target.click();
+        ${double ? "target.click();" : ""}
         return "已点击：" + target.querySelector(".cmd").textContent.trim();
       })()`,
     ),
   );
+  say("smoke-start", started);
+  check("start-member", started.startsWith("已点击"), started);
   await wait(Number(env("START_WAIT") ?? 30_000));
   say(
     "smoke-start-after",
@@ -228,9 +419,23 @@ async function smokeFavorite(win: BrowserWindow): Promise<void> {
     await wait(3000);
   }
 
-  if (env("FAVORITE") === "open") {
-    // 点收藏项 = 恢复进工作集，与点「未启动的成员」同一条路径
-    say("smoke-fav-open", await run(win, 'document.querySelector("#favTree .sess.fav").click()'));
+  if (env("FAVORITE") === "open" || env("FAVORITE") === "open2") {
+    // 点收藏项 = 恢复进工作集，与点「未启动的成员」同一条路径 ——
+    // 所以 `open2`（点两下）验的是同一个在途标志，只是从第三个入口进
+    const twice = env("FAVORITE") === "open2";
+    say(
+      "smoke-fav-open",
+      await run(
+        win,
+        `(() => {
+          const r = document.querySelector("#favTree .sess.fav");
+          if (!r) return "收藏区里没有可点的条目";
+          r.click();
+          ${twice ? "r.click();" : ""}
+          return "已点击${twice ? "两次" : ""}：" + r.querySelector(".sum").textContent.trim();
+        })()`,
+      ),
+    );
     await wait(Number(env("START_WAIT") ?? 30_000));
     say(
       "smoke-fav-opened",
@@ -318,19 +523,34 @@ async function smokeEnd(win: BrowserWindow): Promise<void> {
   const before = livePids().map((root) => ({ root, pids: tree([root], snap).map((p) => p.ProcessId) }));
   say("smoke-end-tree-before", JSON.stringify(before.map((b) => `${b.root}:${b.pids.length}个`)));
 
-  say(
-    "smoke-end",
+  const ended = String(
     await run(
       win,
       `(() => {
-        const before = document.querySelectorAll("#tree .sess").length;
-        const x = document.querySelector("#tree .sess .end");
-        if (!x) return "侧栏里没有会话可结束";
-        x.click();
-        return "结束前成员数 " + before;
+        const rows = [...document.querySelectorAll("#tree .sess")];
+        const states = rows.map((r) => r.querySelector(".state").textContent);
+        // 必须精确挑一个在跑的。原本是 querySelector 取第一个 .end —— 工作集里攒了
+        // 旧成员之后点到的是它们，移出工作集不杀任何进程，于是「整树消失 0 棵」
+        // 既是真的又毫无意义。这个模式一直隐含假设「工作集里只有一个成员」。
+        // 用白名单而不是「不等于未启动」：状态有四种（工作中/未启动/已停/需要你），
+        // 「已停」也不是「未启动」，一样会被选中；响铃时「工作中」会被改写成「需要你」。
+        const i = states.findIndex((s) => s === "工作中" || s === "需要你");
+        if (i < 0) return "侧栏里没有在跑的会话可结束，各成员状态：" + states.join("/");
+        // 把点中的那一行的身份打出来。不打的话，一次失败只能看到「整树消失 0 棵」，
+        // 分不清是「漏杀」还是「压根点错了行」—— 那两件事的修法完全相反。
+        const key = rows[i].dataset.key;
+        rows[i].querySelector(".end").click();
+        return JSON.stringify({
+          成员数: rows.length,
+          各成员状态: states,
+          点中第几个: i,
+          点中的key: key,
+        });
       })()`,
     ),
   );
+  say("smoke-end", ended);
+  check("end", ended.startsWith("{"), ended);
   /**
    * **轮询到整树消失，不固定等**。
    *
@@ -360,6 +580,11 @@ async function smokeEnd(win: BrowserWindow): Promise<void> {
       各棵: after.map((a) => `${a.root}: ${a.was}→${a.survived}`),
     }),
   );
+  // 通过的形态是**恰好一棵**：0 棵 = 漏杀（就是「25 个进程活着」那次），
+  // 多于 1 棵 = 点一个 ✕ 连坐了别人
+  if (before.length > 0) {
+    check("end", wiped.length === 1, `整树消失 ${wiped.length} 棵，应为 1：${JSON.stringify(after)}`);
+  }
   say(
     "smoke-end-after",
     await run(
@@ -367,6 +592,8 @@ async function smokeEnd(win: BrowserWindow): Promise<void> {
       `JSON.stringify({
         members: document.querySelectorAll("#tree .sess").length,
         tabs: document.querySelectorAll("#tabs .tab").length,
+        剩下的key: [...document.querySelectorAll("#tree .sess")].map((r) => r.dataset.key),
+        侧栏报错: document.getElementById("sideNote").hidden ? null : document.getElementById("sideNote").textContent,
       })`,
     ),
   );
@@ -617,6 +844,43 @@ async function smokeShots(win: BrowserWindow, dir: string): Promise<void> {
   await shoot(win, dir, "04-新建会话");
   await run(win, 'document.getElementById("newClose").click()');
   await wait(400);
+
+  /**
+   * 这一刀新加的两块界面：侧栏报错位、历史里的「有来源没读出来」。
+   *
+   * **文字是注入的**，因为这两个状态在一台好机器上不会自然出现
+   * （`verify:broken` 那边有真的 `#sideNote`）。这里要看的是**样式对不对** ——
+   * 对齐、留白、换行、在两种主题下的对比度。`.btn-search` 完全没有 CSS 那次
+   * 就是这么发现的：冒烟全绿，界面是错的。
+   */
+  await run(
+    win,
+    `(() => {
+      const s = document.getElementById("sideNote");
+      s.hidden = false;
+      s.textContent = "没能启动：工作目录不存在或不是目录：C:\\\\Users\\\\PC\\\\Desktop\\\\一个已经被删掉的很长的项目目录名";
+    })()`,
+  );
+  await wait(400);
+  await shoot(win, dir, "08-侧栏报错位");
+
+  await run(win, 'document.getElementById("btnHistory").click()');
+  // **注入必须在扫描回来之后。** 第一版是先注入再等扫描，而扫描的 .then 里
+  // `histProblems.hidden = r.problems.length === 0` 又把它关上了 ——
+  // 截出来的图里那一条根本不在。冒烟当时是全绿的。
+  await wait(Number(env("SCAN_WAIT") ?? 8000));
+  await run(
+    win,
+    `(() => {
+      const p = document.getElementById("histProblems");
+      p.hidden = false;
+      p.textContent = "有 1 个来源没读出来：[opencode] 扫描失败：database is locked";
+    })()`,
+  );
+  await wait(400);
+  await shoot(win, dir, "09-历史-读不出的来源");
+  await run(win, 'document.getElementById("histClose").click()');
+  await wait(400);
 }
 
 /**
@@ -644,7 +908,20 @@ async function smokeBell(win: BrowserWindow): Promise<void> {
   // 切到那个会话，标记应当消失
   win.focus();
   await wait(300);
-  await run(win, 'document.querySelector("#tabs .tab").click()');
+  // 没有标签页时原本是 `querySelector(...).click()` → TypeError → 整个冒烟挂死。
+  // 这个模式要求先有一个在跑的会话，说清楚比抛错强。
+  const clicked = String(
+    await run(
+      win,
+      `(() => {
+        const t = document.querySelector("#tabs .tab");
+        if (!t) return "没有标签页 —— BELL 模式要先有一个在跑的会话（配合 NEW=1）";
+        t.click();
+        return "已切到该会话";
+      })()`,
+    ),
+  );
+  check("bell", clicked === "已切到该会话", clicked);
   await wait(500);
   say(
     "smoke-bell-cleared",
@@ -656,6 +933,31 @@ async function smokeBell(win: BrowserWindow): Promise<void> {
       })`,
     ),
   );
+}
+
+/**
+ * 「坏机器」上界面说的话（配合 `scripts/verify-broken.cjs`）。
+ *
+ * 跑在 `START_MEMBER` 之后 —— 那一击点的是唯一一个成员，而它的工作目录已经被删了，
+ * 所以它**必然失败**。要验的就是：失败之后界面到底说没说。
+ */
+async function smokeBroken(win: BrowserWindow): Promise<void> {
+  const raw = (await run(
+    win,
+    `JSON.stringify({
+      侧栏报错可见: !document.getElementById("sideNote").hidden,
+      侧栏报错: document.getElementById("sideNote").textContent,
+      成员数: document.querySelectorAll("#tree .sess").length,
+      标签页数: document.querySelectorAll("#tabs .tab").length,
+      在跑: document.getElementById("runningCount").textContent,
+    })`,
+  )) as string;
+  say("smoke-broken", raw);
+  const b = JSON.parse(raw) as { 侧栏报错可见: boolean; 侧栏报错: string; 标签页数: number };
+  // 这是这一击的全部意义：点一个起不来的会话，不能什么都不说
+  check("broken", b.侧栏报错可见, "点了一个工作目录已删的成员，启动失败，侧栏一个字都没说");
+  check("broken", b.侧栏报错.length > 0, "报错位可见但内容是空的");
+  check("broken", b.标签页数 === 0, `启动失败却开出了 ${b.标签页数} 个标签页`);
 }
 
 /** 快捷键与右键菜单的点击路径。两者都没有单元测试能覆盖到接线这一层。 */
@@ -773,14 +1075,23 @@ async function smokeSummary(win: BrowserWindow): Promise<void> {
   );
 }
 
-/** 挂上冒烟流程。`quit` 在最后一步被调用。 */
-export function attachSmoke(win: BrowserWindow, quit: () => void): void {
+/** 挂上冒烟流程。`quit` 在最后一步被调用，**带退出码** —— 见 `check`。 */
+export function attachSmoke(win: BrowserWindow, quit: (code: number) => void): void {
   const delay = Number(env("DELAY") ?? 1500);
 
   win.webContents.once("did-finish-load", () => {
     void (async () => {
-      if (env("NEW") === "1") await smokeNew(win);
-      if (env("FROM_HISTORY")) await smokeFromHistory(win, Number(env("FROM_HISTORY")));
+      if (env("NEW") === "all") {
+        await smokeNewAll(win);
+        await checkAccounting(win, "new-all");
+      } else if (env("NEW") === "1") {
+        await smokeNew(win);
+        await checkAccounting(win, "new");
+      }
+      if (env("FROM_HISTORY")) {
+        await smokeFromHistory(win, env("FROM_HISTORY")!);
+        await checkAccounting(win, "history");
+      }
       // 主题要在截图**之前**换 —— 只在深色里好看的细节不算修好
       const shotPatch: Record<string, string> = {};
       if (env("THEME")) shotPatch["themeId"] = env("THEME")!;
@@ -790,18 +1101,28 @@ export function attachSmoke(win: BrowserWindow, quit: () => void): void {
         await wait(600);
       }
       if (env("SHOT")) await smokeShots(win, env("SHOT")!);
-      if (env("FAVORITE")) await smokeFavorite(win);
-      if (env("START_MEMBER") === "1") await smokeStartMember(win);
+      if (env("FAVORITE")) {
+        await smokeFavorite(win);
+        await checkAccounting(win, "favorite");
+      }
+      if (env("START_MEMBER")) {
+        await smokeStartMember(win);
+        await checkAccounting(win, "start-member");
+      }
+      if (env("BROKEN") === "1") await smokeBroken(win);
       if (env("SUMMARY") === "1") await smokeSummary(win);
       if (env("VERSIONS") === "1") await smokeVersions(win);
       if (env("HARNESS") === "1") await smokeHarness(win);
       if (env("DIAG") === "1") await smokeDiag(win);
-      if (env("CLEAN") === "1") await smokeClean(win, env("CLEAN_SHOTS") ?? null);
-      if (env("DPAPI")) await smokeDpapi(win, env("DPAPI")!);
+      if (env("CLEAN") === "1") await smokeClean(win, env("CLEAN_SHOTS") ?? null, check);
+      if (env("DPAPI")) await smokeDpapi(win, env("DPAPI")!, check);
       if (env("KEYS") === "1") await smokeKeys(win);
       if (env("HISTPERF") === "1") await smokeHistPerf(win);
       if (env("BELL") === "1") await smokeBell(win);
-      if (env("END") === "1") await smokeEnd(win);
+      if (env("END") === "1") {
+        await smokeEnd(win);
+        await checkAccounting(win, "end");
+      }
 
       const patch: Record<string, string> = {};
       if (env("THEME")) patch["themeId"] = env("THEME")!;
@@ -815,10 +1136,45 @@ export function attachSmoke(win: BrowserWindow, quit: () => void): void {
         win,
         "JSON.stringify({ check: window.__agentorySelfCheck, dump: window.__agentoryDump?.() })",
       )) as string;
-      const { check, dump } = JSON.parse(r) as { check: unknown; dump?: string };
-      say("smoke", JSON.stringify(check));
+      // 改名避开上面那个 `check()` 断言函数 —— 同名会遮蔽，读的人会以为是同一个东西
+      const { check: selfCheck, dump } = JSON.parse(r) as { check: unknown; dump?: string };
+      say("smoke", JSON.stringify(selfCheck));
+
+      /**
+       * **渲染层到底启动了没有。**
+       *
+       * `main.ts` 是一整块顶层脚本，`$()` 找不到 id 就抛「界面缺少 #x」——
+       * 任何一个 id 打错就是白屏。抛在顶层的话后面的自检根本不会被赋值，
+       * 而在这条断言之前，那种情况只是打印 `[smoke] undefined`，没人会红。
+       *
+       * 这比在 happy-dom 里搭一个 40 个方法的 api 桩去 import main.ts 可靠得多：
+       * 那种桩只要有一个默认值形状写错，测试就会绿着而界面是坏的。
+       */
+      const sc = selfCheck as { bridge?: boolean } | undefined;
+      check("boot", sc !== undefined && sc !== null, "渲染层没有自检对象 —— 顶层脚本多半抛了");
+      check("boot", sc?.bridge === true, "preload 桥没挂上");
       process.stdout.write(`[dump-begin]\n${dump ?? "(无)"}\n[dump-end]\n`);
-      quit();
-    })();
+
+      if (failures.length) {
+        process.stdout.write(`[smoke-result] 失败 ${failures.length} 项\n`);
+        for (const f of failures) process.stdout.write(`  ✗ ${f}\n`);
+      } else {
+        process.stdout.write("[smoke-result] 全部通过\n");
+      }
+      quit(failures.length ? 1 : 0);
+    })().catch((e: unknown) => {
+      /**
+       * **抛错必须退出，不能挂着。**
+       *
+       * 这里原本没有 catch：任何一个模式里的意外抛错都会让这个 IIFE 静默 reject，
+       * `quit()` 永远不执行，应用就那么开着 —— 命令行看起来像卡死，
+       * 没有输出、没有退出码。实测撞到了：`smokeBell` 在没有标签页时
+       * `querySelector("#tabs .tab").click()` 抛 TypeError，冒烟挂了半小时。
+       *
+       * **挂起比失败糟得多**：失败会被人看见，挂起只会被人 Ctrl+C 掉然后忘掉。
+       */
+      process.stdout.write(`[smoke-result] 冒烟自己抛错了：${String(e)}\n`);
+      quit(1);
+    });
   });
 }

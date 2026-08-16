@@ -94,9 +94,19 @@ function readUserThemes(): { raw: unknown[]; warnings: string[] } {
   return { raw, warnings };
 }
 
-let settings = { ...DEFAULTS };
-
+/**
+ * **设置只有磁盘一个真相。**
+ *
+ * 这里原本有个模块级的 `settings` 快照，只在 `registerThemeIpc` 时读一次。
+ * 而 `summariesEnabled.set` / `versionCheckEnabled.set` 走的是「读盘→改→写盘」，
+ * 从不更新那个快照 —— 于是「打开摘要开关，再换个主题」时，`theme:set` 把
+ * 陈旧快照整个写回磁盘，刚打开的开关被重置回默认值。反向同理。
+ *
+ * 每次读盘的代价可以忽略（只有开设置面板、换主题、系统明暗切换时会走到），
+ * 换来的是不可能再有第二个真相。
+ */
 function buildState(): ThemeState {
+  const settings = readSettings();
   const user = readUserThemes();
   const loaded = loadThemes({ builtin: builtinThemes, user: user.raw });
   // 记住的主题可能来自一个已被删掉的用户主题文件 —— 回退到默认，不是崩溃
@@ -114,11 +124,12 @@ function buildState(): ThemeState {
 }
 
 export function registerThemeIpc(getWindow: () => BrowserWindow | null): void {
-  settings = readSettings();
-
   ipcMain.handle("theme:state", (): ThemeState => buildState());
 
   ipcMain.handle("theme:set", (_e, patch: Partial<Settings>): ThemeState => {
+    // 现读现改现写。只动 patch 里给的字段，别的原样带回去 ——
+    // 这份文件里还住着两个开关，它们可能刚被别处改过。
+    const settings = readSettings();
     if (typeof patch.themeId === "string") settings.themeId = patch.themeId;
     if (patch.mode === "system" || patch.mode === "light" || patch.mode === "dark") {
       settings.mode = patch.mode;

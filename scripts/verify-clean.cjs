@@ -84,10 +84,21 @@ try {
     timeout: 180_000,
   });
 } catch (e) {
-  // preview 退出码非 0 不影响我们要看的东西 —— 上面已经原样打出来了
+  // **退出码现在有意义了。** 冒烟里的 `check()` 失败会让应用 exit(1)，
+  // 而 preview 会把它带上来。以前这里写着「退出码非 0 不影响我们要看的东西」，
+  // 那是在断言存在之前 —— 现在把它咽掉就等于把红色咽掉。
   console.log("\n（preview 退出码 " + (e.status ?? "?") + "）");
+  process.exitCode = 1;
 } finally {
-  rmSync(home, { recursive: true, force: true });
-  rmSync(appdata, { recursive: true, force: true });
+  // **清理失败不等于验证失败。** 假家目录偶尔会被残留进程占着，`rmSync` 抛 EPERM，
+  // 而它在 finally 里 —— 于是一次全部通过的验证被报成失败（实测撞到了）。
+  // 临时目录留在那儿最多占点盘，掩盖结果才是真问题。
+  for (const dir of [home, appdata]) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch (err) {
+      console.log("（清理不掉 " + dir + "：" + err.code + "，重启后会没）");
+    }
+  }
   if (shotDir) console.log("\n截图留在 " + shotDir);
 }

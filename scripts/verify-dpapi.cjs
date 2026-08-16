@@ -78,8 +78,11 @@ function launch(phase) {
       shell: true,
       timeout: 120_000,
     });
-  } catch {
-    // 退出码不重要，我们看的是它打出来的 [dpapi-*] 和磁盘上的密文文件
+  } catch (e) {
+    // **退出码现在有意义了** —— 冒烟里的 `check()` 失败会让应用 exit(1)。
+    // 原来这里写着「退出码不重要」，那是在断言存在之前。
+    console.log(`（第 ${phase} 次退出码 ${e.status ?? "?"}）`);
+    process.exitCode = 1;
   }
 }
 

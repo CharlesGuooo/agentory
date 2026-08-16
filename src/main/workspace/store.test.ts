@@ -49,7 +49,8 @@ describe("工作集持久化", () => {
 
     const r = loadWorkspace(p);
     expect(r.workspace.sessions).toEqual([]);
-    expect(r.warnings).toHaveLength(1);
+    // 断内容不断条数：坏读还会多带一条「原文件已备份到 …」（见 entryFile.test.ts）
+    expect(r.warnings.some((w) => w.includes("不是合法 JSON"))).toBe(true);
     // 用户的文件可能是手改坏的，读失败不该顺手把它抹了
     expect(readFileSync(p, "utf8")).toBe(raw);
   });
@@ -59,7 +60,7 @@ describe("工作集持久化", () => {
     writeFileSync(p, JSON.stringify({ nope: true }));
     const r = loadWorkspace(p);
     expect(r.workspace.sessions).toEqual([]);
-    expect(r.warnings).toHaveLength(1);
+    expect(r.warnings.some((w) => w.includes("缺少 sessions 数组"))).toBe(true);
   });
 
   it("个别条目缺字段时只跳过它，其余照常读回", () => {
@@ -73,7 +74,7 @@ describe("工作集持久化", () => {
     );
     const r = loadWorkspace(p);
     expect(r.workspace.sessions.map((x) => x.sessionId)).toEqual(["好的"]);
-    expect(r.warnings).toHaveLength(2);
+    expect(r.warnings.filter((w) => w.startsWith("跳过条目"))).toHaveLength(2);
   });
 
   it("未知的 agent 名被跳过", () => {

@@ -110,6 +110,19 @@ npm run package    # build the installer and the portable exe into release/
 files. They skip themselves when the thing they need is not present, rather than passing
 vacuously.
 
+Four end-to-end checks run the real packaged app against a machine state that unit tests
+cannot create. Each one builds first and exits non-zero on failure.
+
+```bash
+npm run verify:clean     # a brand-new machine with no agent installed at all
+npm run verify:broken    # our own records corrupted, plus a session whose directory is gone
+npm run verify:orphans   # five agents running, then a normal quit — nothing may survive it
+npm run verify:dpapi     # the encrypted API key survives a fresh process
+```
+
+`verify:clean` and `verify:broken` build a fake home directory from three environment
+variables, so they never touch your own configuration.
+
 ## Status
 
 Working: session index, resume, workspace persistence, favourites, session summaries,
@@ -120,6 +133,10 @@ Not built yet:
 
 - **Auto-update.** There is no release feed yet, so there is nothing to update from.
 - **Split panes.** One session is visible at a time; switching is by tab or `Ctrl+Tab`.
+- **Two sessions of the same agent in the same directory.** An agent assigns a session id
+  only after the session starts, and agentory does not backfill it, so a workspace entry
+  created in-app is keyed by `(agent, directory)`. Starting a second one there is refused
+  with an explanation rather than silently producing a tab you cannot open or close.
 
 Known limitations:
 

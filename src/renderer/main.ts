@@ -50,14 +50,44 @@ interface Pane {
   term: Terminal;
   fit: FitAddon;
   el: HTMLElement;
+  /**
+   * 这个面板的 ResizeObserver。**必须留着句柄** —— `el.remove()` 不会断开观察器，
+   * 而它闭包里抓着 `fit` 和整个 Terminal 实例（连同它那段滚动缓冲）。
+   */
+  ro: ResizeObserver;
 }
 
 /** paneId → 终端。切标签页只是换显示哪一个，不销毁另一个。 */
 const panes = new Map<string, Pane>();
 /** 界面上的会话，**含尚未启动的工作集成员**。key 来自工作集主键。 */
 const views: SessionView[] = [];
+/**
+ * 关掉一个面板：**断观察器、销毁终端、再摘 DOM。**
+ *
+ * 原来只有 `el.remove()` + `panes.delete()` —— 那两步都不释放 xterm 实例
+ * （它带着整段滚动缓冲），也不断开 ResizeObserver（它的闭包抓着 fit 和整个终端）。
+ * 目标负载是「同时 8 个会话」，开开关关一天下来就是几十段滚动缓冲留在内存里。
+ *
+ * 顺序有讲究：先 disconnect 再 dispose 再摘 DOM —— 倒过来的话摘 DOM 会触发
+ * 一次 resize 回调，而那时 fit 指向的终端已经没了。
+ */
+function disposePane(paneId: string): void {
+  const p = panes.get(paneId);
+  if (!p) return;
+  p.ro.disconnect();
+  p.term.dispose();
+  p.el.remove();
+  panes.delete(paneId);
+}
+
 /** 工作目录已消失的成员 key。由主进程现算给出，不缓存。 */
 const missingCwd = new Set<string>();
+/**
+ * 正在启动中的会话 key。**光查 `views` 不够** —— view 是在 IPC 回来之后才进去的，
+ * 而 agent 起来要几秒；这几秒里再点一次，查 `views` 一样查不到，于是又起一个。
+ * 用户不耐烦时的双击就落在这个窗口里。
+ */
+const starting = new Set<string>();
 let activeKey: string | null = null;
 let theme: ThemeState | null = null;
 
@@ -158,7 +188,11 @@ if (!agentory) {
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(el);
-    panes.set(paneId, { term, fit, el });
+    const ro = new ResizeObserver(() => {
+      if (viewOf(activeKey ?? "")?.paneId === paneId) fit.fit();
+    });
+    ro.observe(el);
+    panes.set(paneId, { term, fit, el, ro });
 
     /**
      * agent 敲铃 = 它需要你。**用 xterm.js 的 onBell，不自己在字节流里找 ** ——
@@ -175,9 +209,6 @@ if (!agentory) {
     });
     term.onData((d) => api.write(paneId, d));
     term.onResize(({ cols, rows }) => api.resize(paneId, cols, rows));
-    new ResizeObserver(() => {
-      if (viewOf(activeKey ?? "")?.paneId === paneId) fit.fit();
-    }).observe(el);
 
     view.paneId = paneId;
     view.state = "running";
@@ -308,6 +339,17 @@ if (!agentory) {
       .then((r) => {
         allSessions = r.sessions;
         $("historyCount").textContent = String(allSessions.length);
+        /**
+         * **读不动的来源必须说出来。**
+         *
+         * 这里原本只取 `r.sessions`，`r.problems` 直接丢掉。后果不是少一行提示：
+         * 「opencode 的库被别的进程锁着」那次，166 条会话整块消失，
+         * 而界面上的表现只是计数从 437 变成 271 —— 用户没有任何理由怀疑
+         * 自己看到的不是全部。那次是靠并发跑测试碰巧撞出来的。
+         */
+        $("histProblems").hidden = r.problems.length === 0;
+        $("histProblems").textContent =
+          r.problems.length === 0 ? "" : `有 ${r.problems.length} 个来源没读出来：${r.problems.join("；")}`;
         refreshHistory();
       })
       // 不接住的话，弹窗会永远停在「正在扫描…」
@@ -344,29 +386,55 @@ if (!agentory) {
     const s = shown[Number(row.dataset["i"])];
     if (!s || s.cwd === null) return;
     const cwd = s.cwd;
+    // 从历史恢复是**显式动作** → 加入工作集（D-5）
+    const label = labelOf(s);
+    const entry: WorkspaceEntry = {
+      agent: s.agent,
+      sessionId: s.sessionId,
+      cwd,
+      ...(label === null ? {} : { label }),
+      addedAt: new Date().toISOString(),
+    };
+
+    /**
+     * **已经开着的会话，切过去，不再起第二个。**
+     *
+     * 之前这里无条件 resume，而 `attach` 的去重是 `views.includes(view)`（**引用相等**），
+     * 每次都新造一个 view 对象 → 必然再 push 一个同 key 的。后果不是「多一个 tab」，
+     * 是**两个 agent 进程 `--resume` 同一个会话 id、同时往同一个 transcript 追加** ——
+     * 而那些会话文件是这个产品的全部地基。
+     *
+     * 判断必须在 `resumeSession` **之前**：事后去重的话第二个 pty 已经起来了。
+     * 用 `activate` 而不是 `show`，因为「已在工作集但还没启动」也要走到 —— 那种情况该起它。
+     *
+     * 冒烟 `AGENTORY_SMOKE_FROM_HISTORY=dup` 复现过：两个 tab 的 data-key 完全相同。
+     */
+    const key = entryKey(entry);
+    if (starting.has(key)) return;
+    const open = viewOf(key);
+    if (open) {
+      closeHistory();
+      activate(key);
+      return;
+    }
+
+    starting.add(key);
     const [cols, rows] = dims();
     void api
       .resumeSession(s, cols, rows)
       .then(async (r) => {
         closeHistory();
-        // 从历史恢复是**显式动作** → 加入工作集（D-5）
-        const label = labelOf(s);
-        const entry: WorkspaceEntry = {
-          agent: s.agent,
-          sessionId: s.sessionId,
-          cwd,
-          ...(label === null ? {} : { label }),
-          addedAt: new Date().toISOString(),
-        };
-        await api.workspaceAdd(entry);
         attach(viewFromEntry(entry), r.id);
+        await persist(entry);
       })
       .catch((err: Error) => {
         $("histList").insertAdjacentHTML(
           "afterbegin",
           `<div class="hist-empty">恢复失败：${cleanIpcError(err.message).replace(/</g, "&lt;")}</div>`,
         );
-      });
+      })
+      // 失败也要放开，否则这条会话在本次运行里永远起不来了
+      .finally(() => starting.delete(key));
   });
 
   // ---------- 新建会话 ----------
@@ -458,6 +526,31 @@ if (!agentory) {
     const cwd = ($("newCwd") as HTMLInputElement).value.trim();
     if (pickedAgent === null || !cwd) return;
     const agent = pickedAgent;
+
+    /**
+     * **同一个目录 + 同一个 agent，工作集里只能有一条没有 id 的会话。**
+     *
+     * 主键在没有 id 时退化成 `agent|cwd:<目录>`（`workspace/model.ts` 有说明），
+     * 而新建的会话**永远拿不到 id**（id 由 agent 写进它自己的会话文件，我们不回填）。
+     * 所以在同一个目录里再起一个同样的 agent，两个 view 的 key 完全相同，
+     * 而 `viewOf` 返回的是第一个 —— 后果不是「多一行」：
+     *
+     *   · 第二个标签页点不开（`show(key)` 永远切到第一个）
+     *   · ✕ 结束的是第一个
+     *   · 第二个的 pty 成为界面上够不着的孤儿，只有退出应用才收得走
+     *
+     * 也就是说这条路今天**本来就是坏的**，只是坏得无声。挡住它并说清原因，
+     * 严格优于让用户开出一个点不开也关不掉的会话。
+     * （真要支持同目录多会话，得给工作集条目一个稳定的本地 id —— 那是另一件事。）
+     */
+    if (viewOf(entryKey({ agent, sessionId: null, cwd, addedAt: "" }))) {
+      showNewError(
+        `这个目录里已经有一个 ${agent} 会话了。agent 要等会话开始后才分配 id，` +
+          `在那之前同一个目录的同一个 agent 只能有一条 —— 先结束那一个，或者换个目录。`,
+      );
+      return;
+    }
+
     const [cols, rows] = dims();
     void api
       .startSession(agent, cwd, cols, rows)
@@ -470,8 +563,8 @@ if (!agentory) {
           cwd,
           addedAt: new Date().toISOString(),
         };
-        await api.workspaceAdd(entry);
         attach(viewFromEntry(entry), r.id);
+        await persist(entry);
       })
       .catch((err: Error) => showNewError(`启动 ${agent} 失败：${cleanIpcError(err.message)}`));
   });
@@ -483,8 +576,7 @@ if (!agentory) {
     // 「结束会话」= 杀进程 + 移出工作集（DESIGN.md Q7 定案）
     if (v.paneId !== null) {
       api.kill(v.paneId);
-      panes.get(v.paneId)?.el.remove();
-      panes.delete(v.paneId);
+      disposePane(v.paneId);
     }
     await api.workspaceRemove(v.agent as AgentId, v.sessionId, v.cwd);
     views.splice(views.indexOf(v), 1);
@@ -492,6 +584,51 @@ if (!agentory) {
     if (activeKey !== null) show(activeKey);
     else paint();
   }
+
+  /**
+   * 侧栏的报错位。传 `null` 清空。
+   *
+   * 在它之前，侧栏点击这条路径**没有任何报错出口**：`restoreSerially` 老老实实
+   * 带回了每条的 `{ok, error}`，`resumeGo` 那条路也确实读了（写进 `#resumeNote`），
+   * 唯独侧栏和收藏区把整个返回值 `void` 掉了。失败时用户看到的是：点一下，
+   * 什么都没发生 —— 那正是 U+0000 那次的形状（四个交互全是死的却一个错都不报）。
+   */
+  const sideNote = (msg: string | null): void => {
+    $("sideNote").textContent = msg ?? "";
+    $("sideNote").hidden = msg === null;
+  };
+
+  /**
+   * 把会话记进工作集。**必须在 `attach` 之后调，而且不能让它的失败冒泡。**
+   *
+   * 原本是 `await api.workspaceAdd(entry); attach(...)` —— 顺序反了：
+   * 进程在 `startSession`/`resumeSession` 时就已经起来了，落盘失败
+   * （盘满、AppData 被杀软锁住、workspace.json 被设成只读、漫游配置额度满）
+   * 会让 `attach` 永远不执行，于是那个 agent 进程连同它的一堆 MCP 子进程
+   * **没有面板、没有 view、没有标签页**，只有退出应用才收得走。
+   * 而界面显示的是「启动失败」—— 一句假话。
+   *
+   * 面板是用户唯一能控制那个进程的把手，所以它优先于持久化。
+   */
+  const persist = async (entry: WorkspaceEntry): Promise<void> => {
+    try {
+      await api.workspaceAdd(entry);
+    } catch (e) {
+      sideNote(`会话已经起来了，但没能记进工作集：${cleanIpcError((e as Error).message)}`);
+    }
+  };
+
+  /** 批量恢复的结果：失败的必须说出来。成功则清掉上一条错。 */
+  const reportRestore = (outcomes: { ok: boolean; error?: string }[]): void => {
+    const bad = outcomes.filter((o) => !o.ok);
+    sideNote(
+      bad.length === 0
+        ? null
+        : bad.length === 1
+          ? `没能启动：${cleanIpcError(bad[0]!.error ?? "")}`
+          : `${bad.length} 个没能启动：${cleanIpcError(bad[0]!.error ?? "")}`,
+    );
+  };
 
   function activate(key: string): void {
     const v = viewOf(key);
@@ -501,8 +638,19 @@ if (!agentory) {
       return;
     }
     // 「未启动」：点一下才真起（D-W3，D-12 的精神实现）
+    //
+    // 在途标志不能省：agent 起来要几秒，这几秒里 `v.paneId` 还是 null，
+    // 再点一次就又起一个 —— 而第二个进程界面上没有任何句柄，✕ 杀不掉它。
+    // 冒烟 `START_MEMBER=double` 复现过：主进程 2 个 pty，界面说 1 个在跑。
+    if (starting.has(key)) return;
+    starting.add(key);
+    sideNote(null);
     const [cols, rows] = dims();
-    void api.workspaceRestoreAll([entryOfView(v)], cols, rows);
+    void api
+      .workspaceRestoreAll([entryOfView(v)], cols, rows)
+      .then(reportRestore)
+      .catch((e: Error) => sideNote(cleanIpcError(e.message)))
+      .finally(() => starting.delete(key));
   }
 
   $("tabs").addEventListener("click", (e) => {
@@ -1007,11 +1155,19 @@ if (!agentory) {
 
     // 点收藏 = 恢复进工作集。走的是与「点未启动的成员」完全同一条路径 ——
     // 收藏本身不是第三种运行状态，它只是"以后还要用这个"的一张便条。
-    const existing = viewOf(entryKey({ ...f, sessionId: f.sessionId }));
-    if (existing?.paneId) {
-      show(existing.key);
+    //
+    // 既然是同一条路径，已经在工作集里就整个交给 `activate`：有面板它切过去，
+    // 没面板它去起 —— 而且在途标志在它里面，不必在这儿再写一份。
+    // 原来这里是 `existing?.paneId` 才 show，没面板时会掉下去再 workspaceAdd 一次。
+    const favKey = entryKey({ ...f, sessionId: f.sessionId });
+    const existing = viewOf(favKey);
+    if (existing) {
+      activate(existing.key);
       return;
     }
+    // 还没进工作集：这条路径自己也要挡住重复点击。
+    // 冒烟 `FAVORITE=open2` 复现过：主进程 2 个 pty，界面说 1 个在跑。
+    if (starting.has(favKey)) return;
     const entry: WorkspaceEntry = {
       agent: f.agent,
       sessionId: f.sessionId,
@@ -1019,28 +1175,52 @@ if (!agentory) {
       ...(f.label === undefined ? {} : { label: f.label }),
       addedAt: new Date().toISOString(),
     };
+    starting.add(favKey);
+    sideNote(null);
     const [cols, rows] = dims();
-    void api.workspaceAdd(entry).then(() => api.workspaceRestoreAll([entry], cols, rows));
+    void api
+      .workspaceAdd(entry)
+      .then(() => api.workspaceRestoreAll([entry], cols, rows))
+      .then(reportRestore)
+      .catch((e: Error) => sideNote(cleanIpcError(e.message)))
+      .finally(() => starting.delete(favKey));
   });
 
   void refreshSummaries();
+
+  /**
+   * 启动时读到的告警，攒到侧栏那一条里。
+   *
+   * `entryFile.ts` 的注释写着「调用方负责展示 —— 不静默丢弃用户的记录」，
+   * 而在此之前两边的 warnings 都只进了 `selfCheck` 的一个**计数**，没人渲染。
+   * 于是「工作集里有一条读不出来」在界面上完全不可见 —— 用户唯一能察觉的方式
+   * 是自己数少了一条。攒起来一起说，是因为它们几乎总是同时出现（同一次手改、同一次盘坏）。
+   */
+  const bootWarnings: string[] = [];
+  const noteBootWarnings = (): void => {
+    if (bootWarnings.length === 0) return;
+    sideNote(`启动时有 ${bootWarnings.length} 条记录读不出来：${bootWarnings[0]!}`);
+  };
 
   // ---------- 启动：读收藏夹 ----------
   void api.favoritesState().then((st) => {
     favorites = st.favorites.sessions;
     for (const k of st.missingCwd) favMissing.add(k);
+    bootWarnings.push(...st.warnings.map((w) => `收藏夹：${w}`));
     selfCheck["favorites"] = {
       count: favorites.length,
       warnings: st.warnings.length,
       missingCwd: st.missingCwd.length,
     };
     refreshFavorites();
+    noteBootWarnings();
   });
 
   // ---------- 启动：读工作集 ----------
   void api.workspaceState().then((st) => {
     for (const e of st.workspace.sessions) views.push(viewFromEntry(e));
     for (const k of st.missingCwd) missingCwd.add(k);
+    bootWarnings.push(...st.warnings.map((w) => `工作集：${w}`));
     selfCheck["workspaceLoaded"] = {
       entries: st.workspace.sessions.length,
       warnings: st.warnings.length,
@@ -1048,6 +1228,7 @@ if (!agentory) {
     };
     renderBanner();
     paint();
+    noteBootWarnings();
   });
 }
 

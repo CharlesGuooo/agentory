@@ -53,6 +53,13 @@
           <button class="x" id="resumeSkip" type="button" aria-label="忽略">✕</button>
           <span class="note" id="resumeNote"></span>
         </div>
+        <!--
+          侧栏里唯一的报错位。在它之前，「点一个未启动的成员 → 启动失败」
+          在界面上的表现是**点一下什么都没发生** —— 主进程如实带回了
+          `{ok:false, error}`，调用方直接丢掉了。目录被删、agent 卸了、
+          路径在断开的网络盘上，都会走到这里。
+        -->
+        <div class="side-note" id="sideNote" hidden></div>
         <div class="tree" id="tree"></div>
         <!-- 收藏：与工作集正交，收藏不等于在跑。空的时候整块隐藏。 -->
         <div class="fav-wrap" id="favWrap" hidden>
@@ -264,6 +271,12 @@
           />
           <div class="chips" id="histAgents"></div>
         </div>
+        <!--
+          扫描时读不动的来源。主进程一直如实带回 `problems`，而调用方只取了
+          `sessions` —— 于是「opencode 的库被锁住」在界面上的表现就是计数
+          从 437 变成 271，零解释。少掉的会话必须有个说法。
+        -->
+        <div class="hist-problems" id="histProblems" hidden></div>
         <div class="hist-list" id="histList"></div>
       </div>
     </div>

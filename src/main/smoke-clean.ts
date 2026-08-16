@@ -17,6 +17,12 @@ const run = (win: BrowserWindow, js: string): Promise<unknown> =>
   win.webContents.executeJavaScript(js, true);
 
 /**
+ * 断言函数由 `smoke.ts` 传进来，而不是从那里 import —— 反过来它已经 import 了这个文件，
+ * 再互相 import 就成了循环。传参也更明白：这个模块自己不决定「失败了怎么办」。
+ */
+export type Check = (tag: string, ok: boolean, msg: string) => void;
+
+/**
  * 「一台全新机器上的新用户第一次打开」这条路径。
  *
  * ## 为什么单独一个文件
@@ -57,7 +63,7 @@ const TXT = (sel: string): string =>
  * 换账户验的是 DPAPI 用了另一把密钥，而机制本身在这里就能验，
  * 而且它正好覆盖 `summary/ipc.ts` 那个缺 `mkdirSync` 的洞（新机器上 userData 还不存在）。
  */
-export async function smokeDpapi(win: BrowserWindow, phase: string): Promise<void> {
+export async function smokeDpapi(win: BrowserWindow, phase: string, check: Check): Promise<void> {
   await wait(1500);
   await run(win, 'document.getElementById("gear").click()');
   await wait(800);
@@ -75,33 +81,40 @@ export async function smokeDpapi(win: BrowserWindow, phase: string): Promise<voi
       document.getElementById("sumKeySave").click();
     })()`);
     await wait(1500);
-    say(
-      "dpapi-set",
-      await run(
-        win,
-        `JSON.stringify({
-          占位: document.getElementById("sumKey").placeholder,
-          输入框已清空: document.getElementById("sumKey").value === "",
-          状态: ${TXT("#sumStatus")},
-        })`,
-      ),
-    );
-    return;
-  }
-
-  say(
-    "dpapi-check",
-    await run(
+    const set = (await run(
       win,
       `JSON.stringify({
         占位: document.getElementById("sumKey").placeholder,
-        解密成功: document.getElementById("sumKey").placeholder.includes("已保存"),
+        输入框已清空: document.getElementById("sumKey").value === "",
+        状态: ${TXT("#sumStatus")},
       })`,
-    ),
-  );
+    )) as string;
+    say("dpapi-set", set);
+    const s = JSON.parse(set) as { 占位: string; 输入框已清空: boolean };
+    // 存完必须清空 —— 明文留在框里就等于留在渲染进程的内存里
+    check("dpapi-set", s.输入框已清空, "存完 key 之后输入框没清空");
+    check("dpapi-set", s.占位.includes("已保存"), `占位没变成「已保存」：${s.占位}`);
+    return;
+  }
+
+  const got = (await run(
+    win,
+    `JSON.stringify({
+      占位: document.getElementById("sumKey").placeholder,
+      解密成功: document.getElementById("sumKey").placeholder.includes("已保存"),
+    })`,
+  )) as string;
+  say("dpapi-check", got);
+  const c = JSON.parse(got) as { 占位: string; 解密成功: boolean };
+  // 换了进程还解得开，才叫 DPAPI 往返成功
+  check("dpapi-check", c.解密成功, `全新进程解不开已存的 key，占位是：${c.占位}`);
 }
 
-export async function smokeClean(win: BrowserWindow, shotDir: string | null): Promise<void> {
+export async function smokeClean(
+  win: BrowserWindow,
+  shotDir: string | null,
+  check: Check,
+): Promise<void> {
   /** 截图。**界面这层没有自动化测试** —— 这是唯一能真的看见的办法。 */
   const snap = async (name: string): Promise<void> => {
     if (!shotDir) return;
@@ -113,11 +126,9 @@ export async function smokeClean(win: BrowserWindow, shotDir: string | null): Pr
   await wait(1200);
 
   // ---- 1. 主界面：空态文案说了什么 ----
-  say(
-    "clean-main",
-    await run(
-      win,
-      `JSON.stringify({
+  const mainRaw = (await run(
+    win,
+    `JSON.stringify({
         // textContent 会把隐藏子元素的文字也算进去 —— 必须按可见性取
         主区显示的是: document.getElementById("teNoAgent").hidden ? "有 agent 那套" : "没有 agent 那套",
         主区空态: (document.getElementById("teNoAgent").hidden
@@ -128,19 +139,19 @@ export async function smokeClean(win: BrowserWindow, shotDir: string | null): Pr
         历史计数: ${TXT("#historyCount")},
         恢复横幅可见: !document.getElementById("resumeBar").hidden,
         标签页数: document.querySelectorAll("#tabs .tab").length,
+        有agent: document.getElementById("teNoAgent").hidden,
       })`,
-    ),
-  );
+  )) as string;
+  say("clean-main", mainRaw);
+  const main = JSON.parse(mainRaw) as { 有agent: boolean; 侧栏: string };
   await snap("clean-01-主界面");
 
   // ---- 2. 新建会话：有没有出路 ----
   await run(win, 'document.getElementById("btnNew").click()');
   await wait(2500);
-  say(
-    "clean-new",
-    await run(
-      win,
-      `JSON.stringify({
+  const newRaw = (await run(
+    win,
+    `JSON.stringify({
         agent区: ${TXT("#newAgents")},
         可点的agent: document.querySelectorAll("#newAgents button").length,
         开始键禁用: document.getElementById("newGo").disabled,
@@ -150,8 +161,9 @@ export async function smokeClean(win: BrowserWindow, shotDir: string | null): Pr
         出路可见: !document.getElementById("newNoAgent").hidden,
         出路链接数: document.querySelectorAll("#newNoAgent [data-url]").length,
       })`,
-    ),
-  );
+  )) as string;
+  say("clean-new", newRaw);
+  const nw = JSON.parse(newRaw) as { 可点的agent: number; 出路可见: boolean; 出路链接数: number };
   await snap("clean-02-新建会话");
   await run(win, 'document.getElementById("newClose").click()');
   await wait(400);
@@ -197,18 +209,17 @@ export async function smokeClean(win: BrowserWindow, shotDir: string | null): Pr
   // ---- 5. 设置：Agent 区与诊断 ----
   await run(win, 'document.getElementById("gear").click()');
   await wait(1500);
-  say(
-    "clean-ver",
-    await run(
-      win,
-      `JSON.stringify({
+  const verRaw = (await run(
+    win,
+    `JSON.stringify({
         agent区: ${TXT("#verRows")},
         状态: ${TXT("#verStatus")},
         现在检查可点: !document.getElementById("verCheck").disabled,
         摘要状态: ${TXT("#sumStatus")},
       })`,
-    ),
-  );
+  )) as string;
+  say("clean-ver", verRaw);
+  const ver = JSON.parse(verRaw) as { 现在检查可点: boolean };
 
   await run(win, 'document.getElementById("diagRun").click()');
   await wait(4000);
@@ -222,4 +233,38 @@ export async function smokeClean(win: BrowserWindow, shotDir: string | null): Pr
   await run(win, 'document.getElementById("diagBox").scrollIntoView({block:"center"})');
   await wait(300);
   await snap("clean-05-诊断");
+
+  /**
+   * ---- 一致性断言 ----
+   *
+   * **写不变量，不写绝对值。** 这一套要在两种环境下各跑一次（模拟空机器 + 正常对照），
+   * 两边该显示的东西完全不同，所以「历史应该是 0 条」这种断言在对照那次必然假红。
+   *
+   * 而真正坏过的那几处，形状都是**两个独立的地方各说各的**：
+   * 侧栏说「装了」主区说「没装」、诊断在一台完全不可用的机器上说「没发现问题」。
+   * 这类矛盾在两种环境下都必须不成立 —— 所以断言的是它们之间的关系。
+   */
+  check(
+    "clean",
+    main.有agent === nw.可点的agent > 0,
+    `主区说${main.有agent ? "有" : "没有"} agent，新建会话面板里有 ${nw.可点的agent} 个可点`,
+  );
+  check(
+    "clean",
+    nw.出路可见 === !main.有agent,
+    `出路可见=${String(nw.出路可见)}，而主区说${main.有agent ? "有" : "没有"} agent`,
+  );
+  check("clean", !nw.出路可见 || nw.出路链接数 === 5, `出路可见但只有 ${nw.出路链接数} 个链接`);
+  check(
+    "clean",
+    ver.现在检查可点 === main.有agent,
+    `「现在检查」可点=${String(ver.现在检查可点)}，而主区说${main.有agent ? "有" : "没有"} agent`,
+  );
+  // 修过的那个 bug：一台一个 agent 都没有的机器上，诊断的结论是「没发现问题」
+  check(
+    "clean",
+    main.有agent || !结论.includes("没发现问题"),
+    `一个 agent 都没有，诊断却说「${结论}」`,
+  );
+  check("clean", main.侧栏.includes("工作集是空的") || main.有agent, `侧栏文案：${main.侧栏}`);
 }

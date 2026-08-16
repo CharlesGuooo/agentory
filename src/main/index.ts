@@ -72,7 +72,7 @@ function createWindow(): void {
   if (smokeEnabled()) {
     process.stdout.write(`[icon] ${icon ?? "未找到"}
 `);
-    attachSmoke(win, () => app.exit(0));
+    attachSmoke(win, (code) => app.exit(code));
   }
 
   if (process.env["ELECTRON_RENDERER_URL"]) {
@@ -82,7 +82,37 @@ function createWindow(): void {
   }
 }
 
+/**
+ * **一个用户只跑一个实例。**
+ *
+ * 没有这一行，双击两次图标就是两个进程共写 `workspace.json` / `favorites.json` /
+ * `summaries.json` —— 每个都拿着自己启动时读到的那份做「读-改-写」，
+ * 后写的把先写的整个盖掉。A 加了 3 条、B 加 1 条，A 那 3 条就没了。
+ * 摘要缓存尤其贵：那是**花过钱**的东西。
+ *
+ * 锁按 `userData` 路径分，所以 `verify:clean` / `verify:broken` 那些假家目录的运行
+ * 各有各的锁，不会被真实例挡住。
+ */
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  process.stdout.write("[single-instance] 已经有一个 agentory 在跑，这个实例退出\n");
+  /**
+   * 冒烟模式下退 1 而不是 0。**残留的实例会让冒烟秒退并报「全部通过」** ——
+   * 一个什么都没跑过的假绿，比红色危险得多（今天就清理过两次残留 electron）。
+   */
+  app.exit(smokeEnabled() ? 1 : 0);
+}
+
+app.on("second-instance", () => {
+  // 第二次双击图标 = 「把那个窗口给我叫出来」，不是「再开一个」
+  const win = mainWindow;
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.focus();
+});
+
 void app.whenReady().then(() => {
+  if (!gotLock) return;
   // **必须在建窗口之前调用。** 不设 AppUserModelID，Windows 会按可执行文件把窗口
   // 归到 "Electron" 名下，任务栏继续显示 Electron 的默认图标 —— 即使 BrowserWindow
   // 已经传了 icon。这一行不是可选的润色，是图标能不能生效的前提。

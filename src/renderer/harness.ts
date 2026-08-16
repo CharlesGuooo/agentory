@@ -1,7 +1,7 @@
 import type { HarnessMatrix, Scope } from "../main/harness/types";
 import type { AgentId } from "../main/sessions/types";
 import type { AgentoryApi } from "../preload/index";
-import { $, closeHarness, esc, openHarness } from "./shell";
+import { $, cleanIpcError, closeHarness, esc, openHarness } from "./shell";
 
 /**
  * Skills 与 MCP 面板。
@@ -234,7 +234,21 @@ export function setupHarness(deps: HarnessDeps): void {
       if (!r.ok) $("hxSummary").textContent = r.error ?? "操作失败";
       load();
     };
-    if (path) void api.harnessUninstallSkill(path, scope).then(done);
-    else void api.harnessInstallSkill(from!, agent as AgentId, scope, skill).then(done);
+    /**
+     * **这个 catch 不能省。** `busy` 只在 `done` 里复位，所以一次意外 rejection
+     * 就让整张矩阵永久点不动 —— 而且一个字都不说。
+     *
+     * 上面 `load()` 里为同一件事写过注释（「没有这个 catch，一次意外 rejection
+     * 就让面板永远停在『正在读…』」），第二处漏了。
+     */
+    const failed = (e: unknown): void => {
+      busy = false;
+      b.disabled = false;
+      $("hxSummary").textContent = `操作失败：${cleanIpcError(
+        e instanceof Error ? e.message : String(e),
+      )}`;
+    };
+    if (path) void api.harnessUninstallSkill(path, scope).then(done).catch(failed);
+    else void api.harnessInstallSkill(from!, agent as AgentId, scope, skill).then(done).catch(failed);
   });
 }

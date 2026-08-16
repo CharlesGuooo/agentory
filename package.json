@@ -19,6 +19,8 @@
     "package:dir": "electron-vite build && electron-builder --dir",
     "perf": "vitest run src/main/sessions/real-machine.test.ts --no-file-parallelism -t 单条",
     "verify:clean": "electron-vite build && node scripts/verify-clean.cjs",
+    "verify:broken": "electron-vite build && node scripts/verify-broken.cjs",
+    "verify:orphans": "electron-vite build && node scripts/verify-orphans.cjs",
     "verify:dpapi": "electron-vite build && node scripts/verify-dpapi.cjs"
   },
   "dependencies": {
@@ -31,6 +33,7 @@
     "electron": "43.4.0",
     "electron-builder": "^26.15.3",
     "electron-vite": "^4.0.1",
+    "happy-dom": "^20.11.2",
     "smol-toml": "^1.8.0",
     "typescript": "^5.9.3",
     "vite": "^7.1.13",
