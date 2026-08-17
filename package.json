@@ -1,6 +1,6 @@
 {
   "name": "agentory",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Windows 上的跨 agent 会话工作台 —— 统一索引、统一恢复、会话摘要",
   "license": "MIT",
   "private": true,

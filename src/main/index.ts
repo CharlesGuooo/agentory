@@ -156,6 +156,25 @@ function createWindow(): void {
     hintOnce();
   });
 
+  /**
+   * **每次加载都把整页缩放按回 1。**
+   *
+   * 只把 `Ctrl+-` 改绑掉是不够的 —— **Chromium 把 zoom 持久化在 userData 里**
+   * （`Preferences` 的 `partition.per_host_zoom_levels`）。在改绑之前缩过的用户，
+   * 升级后仍然卡在那个尺寸，而改绑恰恰把唯一的退路（`Ctrl+=` 放大）也堵死了：
+   * **比不修更糟**。用户实测卡在 `-4.5`。
+   *
+   * `setZoomLevel(0)` 会把 0 写回去，所以这一行同时是自愈的。
+   * `setVisualZoomLevelLimits(1, 1)` 关掉触控板捏合缩放 —— 同一类问题的另一个入口。
+   *
+   * 之所以漏掉：我每次验证都用全新的 `--user-data-dir`，
+   * **那恰恰把「持久化」这件事藏了起来**。
+   */
+  win.webContents.on("did-finish-load", () => {
+    win.webContents.setZoomLevel(0);
+    win.webContents.setVisualZoomLevelLimits(1, 1).catch(() => undefined);
+  });
+
   // 渲染进程的 console 转发到 stdout。没有这个，渲染层出了问题只能开 devtools 看，
   // 命令行里跑等于瞎子。
   win.webContents.on("console-message", (e) => {

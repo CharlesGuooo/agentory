@@ -1019,6 +1019,29 @@ async function smokeBroken(win: BrowserWindow): Promise<void> {
  * 那样测出来的「没缩放」是假的。
  */
 async function smokeZoom(win: BrowserWindow): Promise<void> {
+  /**
+   * `ZOOM=poison`：把缩放写进 userData 然后优雅退出（`app.exit` 不刷偏好，必须 `app.quit`）。
+   *
+   * ⚠️ **这条守不住那次事故，别把它当护栏。** 实测：
+   * 毒确实落盘了（`Preferences` 里能看到 `-4.5`），但**把修复临时去掉之后
+   * 同一份 profile 跑出来仍然是 `zoomFactor=1`** —— 也就是说它没能复现用户那个
+   * 卡住的状态，因此也证明不了自己能抓住它。
+   *
+   * 留着是因为它仍然在验一件真事：**启动时整页缩放必须是 1**。
+   * 但那次事故（用户升级后卡在 0.44、而退路又被改绑堵死）的复现条件我还没找到，
+   * 如实记在这里而不是假装有守卫 —— 一个证明不了自己的测试比没有更危险。
+   *
+   * 事故本身的根因是确认过的：Chromium 把 zoom 持久化在
+   * `Preferences` 的 `partition.per_host_zoom_levels`，而我此前每次验证都用
+   * 全新的 `--user-data-dir`，**那恰恰把持久化这件事藏了起来**。
+   */
+  if (env("ZOOM") === "poison") {
+    win.webContents.setZoomLevel(-4.5);
+    await wait(600);
+    say("smoke-zoom-poison", `已把 zoomLevel 写成 -4.5（factor=${win.webContents.getZoomFactor().toFixed(2)}）`);
+    return;
+  }
+
   const press = async (keyCode: string, n: number): Promise<void> => {
     for (let i = 0; i < n; i++) {
       win.webContents.sendInputEvent({ type: "keyDown", keyCode, modifiers: ["control"] });
@@ -1230,7 +1253,7 @@ export function attachSmoke(win: BrowserWindow, quit: (code: number) => void): v
       if (env("CLEAN") === "1") await smokeClean(win, env("CLEAN_SHOTS") ?? null, check);
       if (env("DPAPI")) await smokeDpapi(win, env("DPAPI")!, check);
       if (env("KEYS") === "1") await smokeKeys(win);
-      if (env("ZOOM") === "1") await smokeZoom(win);
+      if (env("ZOOM")) await smokeZoom(win);
       if (env("HISTPERF") === "1") await smokeHistPerf(win);
       if (env("BELL") === "1") await smokeBell(win);
       if (env("END") === "1") {
