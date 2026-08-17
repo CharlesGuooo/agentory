@@ -8,6 +8,20 @@ Works with **Claude Code**, **Codex**, **OpenCode**, **Pi** and **Grok Build**.
 
 ![agentory](docs/screenshot.png)
 
+## Download
+
+**[Latest release →](https://github.com/CharlesGuooo/agentory/releases/latest)** · Windows x64
+
+- **`agentory-<version>-x64.exe`** — installer. A normal wizard, installs per-user, no UAC prompt.
+- **`agentory-<version>-portable.exe`** — no install, just run it.
+
+The build is **not code-signed**, so Windows SmartScreen will say it does not recognise
+the app. Click **More info** → **Run anyway**. Getting rid of that screen requires buying
+a code-signing certificate, which this project does not have; if you would rather not
+take that trade, `npm install && npm run package` builds the same two files yourself.
+
+agentory does not contain an agent — install at least one of the five first.
+
 ## The problem
 
 If you run more than one coding agent, your sessions live in a pile of terminal windows.
