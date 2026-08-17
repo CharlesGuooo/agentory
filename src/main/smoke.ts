@@ -325,8 +325,10 @@ async function smokeStartMember(win: BrowserWindow): Promise<void> {
       win,
       `(() => {
         const rows = [...document.querySelectorAll("#tree .sess")];
-        const target = rows.find((r) => r.querySelector(".state").textContent === "未启动");
-        if (!target) return "侧栏里没有未启动的成员";
+        // 文案从「未启动」改成了「点击恢复」（shell.ts 的 stateText 有说明）。
+        // 这是全仓库唯一一处**行为上**依赖这个字面量的地方，其余命中都是注释。
+        const target = rows.find((r) => r.querySelector(".state").textContent === "点击恢复");
+        if (!target) return "侧栏里没有可恢复的成员";
         target.click();
         ${double ? "target.click();" : ""}
         return "已点击：" + target.querySelector(".cmd").textContent.trim();
@@ -846,6 +848,22 @@ async function smokeShots(win: BrowserWindow, dir: string): Promise<void> {
   await wait(900);
   await run(win, 'document.getElementById("sumPeek").click()');
   await wait(2500);
+  // 把这一屏的实际状态打出来，别只留一张图 —— 图要人看，这一行 grep 就行。
+  // 摘要区是「冒烟全绿而界面是错的」的高发区（三个按钮的禁用态没有样式那次）。
+  say(
+    "smoke-shot-sum",
+    await run(
+      win,
+      `JSON.stringify({
+        开关: document.getElementById("sumToggle").textContent,
+        keyRow隐藏: document.getElementById("sumKeyRow").hidden,
+        动作区隐藏: document.getElementById("sumActions").hidden,
+        看看会发送什么可点: !document.getElementById("sumPeek").disabled,
+        两个生成键禁用: document.getElementById("sumRunMine").disabled && document.getElementById("sumRunAll").disabled,
+        状态行: document.getElementById("sumStatus").textContent,
+      })`,
+    ),
+  );
   await shoot(win, dir, "03b-设置-摘要展开");
   await run(win, 'document.getElementById("sumToggle").click()');
   await wait(600);
@@ -1196,6 +1214,22 @@ export function attachSmoke(win: BrowserWindow, quit: (code: number) => void): v
       } else {
         process.stdout.write("[smoke-result] 全部通过\n");
       }
+
+      /**
+       * `CLOSE=1`：**叉掉窗口，然后什么都不做。**
+       *
+       * 托盘常驻要验的那件事，只能从进程外面看：窗口没了之后，
+       * 这个进程还活着吗？会话还在跑吗？所以这里只负责制造那个状态，
+       * 判断交给 `scripts/verify-tray.cjs`（它拿着进程快照在外面等）。
+       *
+       * 注意**不调 `quit`** —— 调了就分不清「应用自己退的」和「叉窗口退的」。
+       */
+      if (env("CLOSE") === "1") {
+        say("smoke-close", `叉窗口前：${livePids().length} 个 pty，pid=${livePids().join()}`);
+        win.close();
+        return;
+      }
+
       quit(failures.length ? 1 : 0);
     })().catch((e: unknown) => {
       /**

@@ -90,9 +90,19 @@ function pipColor(state: SessionView["state"], c: ThemeColors): string {
   return c.dim;
 }
 
+/**
+ * 状态文字**说可做的动作，不说形容词**。
+ *
+ * 「未启动」只描述状态，不解释「为什么这里会有这一条」—— 作者本人都被它问住过。
+ * 它的真实含义是：**在你的工作台上，但进程随上次退出一起没了**（D-5：成员资格与
+ * 运行状态是正交的两件事）。而下面第三行那句灰字就是点下去会跑的命令。
+ *
+ * 「点击恢复」把这一行变成一个可执行的提议，和上方横幅的「上次留下 N 个会话」
+ * 是同一件事的同一种说法 —— 以前那两处一个叫「留下」一个叫「未启动」。
+ */
 const stateText: Record<SessionView["state"], string> = {
   running: "工作中",
-  notStarted: "未启动",
+  notStarted: "点击恢复",
   stopped: "已停",
 };
 

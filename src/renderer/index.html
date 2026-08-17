@@ -6,7 +6,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
     />
-    <title>agentory</title>
+    <title>Agentory</title>
   </head>
   <body>
     <!-- 自绘标题栏。整条是拖拽区，具体控件用 no-drag 挖回来。 -->
@@ -29,7 +29,7 @@
             <rect x="28.3" y="43" width="7.4" height="9" rx="1.6"/>
             <rect x="37.6" y="43" width="7.4" height="9" rx="1.6"/>
           </g>
-        </svg>agentory
+        </svg>Agentory
       </div>
       <div class="tabs" id="tabs"></div>
     </header>
@@ -91,7 +91,7 @@
           <div id="teNoAgent" hidden>
             <p class="te-title">还没有检测到任何 agent</p>
             <p class="te-line">
-              agentory 是 Claude Code / Codex / OpenCode / Pi / Grok 这些 CLI 的工作台，<b>本身不含 agent</b>。
+              Agentory 是 Claude Code / Codex / OpenCode / Pi / Grok 这些 CLI 的工作台，<b>本身不含 agent</b>。
             </p>
             <p class="te-line">先装一个再回来 —— 点<b>新建会话</b>，那里有各家的官网链接。</p>
           </div>
@@ -118,11 +118,21 @@
           </section>
           <section class="field">
             <label id="sumLabel">会话摘要</label>
+            <!--
+              这一段原本只讲隐私（发什么、不发什么、上限多少），**从头到尾没提过要一把
+              DeepSeek 的 key，更没说去哪拿** —— 于是用户打开开关，看到一个输入框，
+              不知道该往里填什么、也不知道去哪弄。
+            -->
             <p class="desc">
-              把每条会话压成一句话，填进列表第二行。
+              把每条会话压成一句话，填进列表第二行 —— 半年前那条会话讲的是什么，一眼能看见。
+              <b>需要你自己的 DeepSeek API key</b>（我们不代收费，用多少是你和 DeepSeek 之间的事），
+              在 <button class="link" type="button" data-url="https://platform.deepseek.com/api_keys">platform.deepseek.com</button> 申请。
+            </p>
+            <p class="desc">
               <b>生成摘要要把会话片段发给 DeepSeek</b> —— 内容会离开这台机器，所以默认关闭。
               发送的只有<b>首条提问</b>和<b>过滤掉工具输出后的结尾片段</b>，上限 4 KB；
               工具输出里藏着你的源码，一个字都不会发出去。
+              不确定的话，先点下面的「看看会发送什么」—— 那一步是纯本地的，不需要 key。
             </p>
             <div class="row">
               <button class="btn-ghost" id="sumToggle" type="button" aria-pressed="false">关闭</button>
@@ -160,7 +170,7 @@
           <section class="field">
             <label>诊断</label>
             <p class="desc">
-              agentory 靠「五个 agent 的东西在这些路径上」工作。你那边一旦不成立
+              Agentory 靠「五个 agent 的东西在这些路径上」工作。你那边一旦不成立
               （配置目录被环境变量搬走、agent 是原生安装、只装了其中几个），
               界面会显示成「你没有」而不是报错。<b>这一屏说清我们找了哪儿、找到没有。</b>
               里面只有路径和数量，<b>不含任何文件内容或密钥</b>。
@@ -219,7 +229,7 @@
             而烂掉的安装命令比没有更糟（D-15 立过这条规矩）。
           -->
           <div class="no-agent" id="newNoAgent" hidden>
-            <p><b>一个 agent 都没检测到。</b>agentory 是这些 CLI 的工作台，本身不含 agent —— 先装一个再回来。</p>
+            <p><b>一个 agent 都没检测到。</b>Agentory 是这些 CLI 的工作台，本身不含 agent —— 先装一个再回来。</p>
             <div class="chips">
               <button class="btn-ghost btn-mini" type="button" data-url="https://code.claude.com/docs/en/quickstart">Claude Code</button>
               <button class="btn-ghost btn-mini" type="button" data-url="https://learn.chatgpt.com/docs/codex/cli">Codex</button>
@@ -227,7 +237,7 @@
               <button class="btn-ghost btn-mini" type="button" data-url="https://github.com/earendil-works/pi">Pi</button>
               <button class="btn-ghost btn-mini" type="button" data-url="https://x.ai/cli">Grok</button>
             </div>
-            <p class="desc">装好之后重开 agentory。如果你确定装了却还是检测不到，去<b>设置 · 诊断</b>看我们找了哪些路径。</p>
+            <p class="desc">装好之后重开 Agentory。如果你确定装了却还是检测不到，去<b>设置 · 诊断</b>看我们找了哪些路径。</p>
           </div>
         </div>
         <div class="panel-foot">

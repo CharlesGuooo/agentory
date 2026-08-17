@@ -115,7 +115,7 @@ export function collectDiagnostics(): Diagnostics {
    */
   if (agents.every((a) => a.exe === null)) {
     problems.push(
-      "一个 agent 都没检测到 —— agentory 需要至少装一个 CLI agent 才能用。" +
+      "一个 agent 都没检测到 —— Agentory 需要至少装一个 CLI agent 才能用。" +
         "如果你确实装了，那多半是它不在 PATH 里，或者装在了我们没找的地方（见上面的路径列表）",
     );
   }
@@ -140,7 +140,7 @@ export function collectDiagnostics(): Diagnostics {
 /** 渲染成一段可以直接贴给维护者的纯文本。 */
 export function renderDiagnostics(d: Diagnostics): string {
   const lines = [
-    `agentory ${d.app.version} · electron ${d.app.electron} · node ${d.app.node} · ${d.app.platform}`,
+    `Agentory ${d.app.version} · electron ${d.app.electron} · node ${d.app.node} · ${d.app.platform}`,
     "",
     "路径：",
     ...d.paths.map(

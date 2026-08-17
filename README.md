@@ -1,4 +1,4 @@
-# agentory
+# Agentory
 
 A cross-agent session workbench for Windows. It collects the coding-agent sessions that
 are currently scattered across a dozen terminal windows into one window, and brings them
@@ -6,21 +6,21 @@ back after a reboot.
 
 Works with **Claude Code**, **Codex**, **OpenCode**, **Pi** and **Grok Build**.
 
-![agentory](docs/screenshot.png)
+![Agentory](docs/screenshot.png)
 
 ## Download
 
 **[Latest release →](https://github.com/CharlesGuooo/agentory/releases/latest)** · Windows x64
 
-- **`agentory-<version>-x64.exe`** — installer. A normal wizard, installs per-user, no UAC prompt.
-- **`agentory-<version>-portable.exe`** — no install, just run it.
+- **`Agentory-<version>-x64.exe`** — installer. A normal wizard, installs per-user, no UAC prompt.
+- **`Agentory-<version>-portable.exe`** — no install, just run it.
 
 The build is **not code-signed**, so Windows SmartScreen will say it does not recognise
 the app. Click **More info** → **Run anyway**. Getting rid of that screen requires buying
 a code-signing certificate, which this project does not have; if you would rather not
 take that trade, `npm install && npm run package` builds the same two files yourself.
 
-agentory does not contain an agent — install at least one of the five first.
+Agentory does not contain an agent — install at least one of the five first.
 
 ## The problem
 
@@ -46,6 +46,11 @@ because the differences are not guessable: Codex is the only one that uses a sub
 app. Reopening offers to bring them all back; nothing is restarted without you asking,
 because restarting an agent session costs tokens.
 
+**Closing the window does not stop your sessions.** Agentory goes to the tray and the
+agents keep running — that is the whole point of a workbench for long-lived sessions.
+The tray icon opens the window again; **quitting is a separate, explicit choice** in the
+tray's right-click menu, and it is the only thing that ends the sessions.
+
 **Summarises each session.** One sentence saying what the session was about, so you can
 tell two `a3f9c1e2` apart. This is **off by default and needs your own DeepSeek API key** —
 it is the only feature that sends **your content** anywhere, so it is a deliberate,
@@ -57,12 +62,12 @@ code lives in tool results. With summaries off, every row falls back to the firs
 informative message from the session, which is readable for about 90% of them.
 
 **Shows each agent's version, and whether a newer one exists.** Reading the installed
-version is a pure file read — agentory never starts an agent process to ask. Checking for
+version is a pure file read — Agentory never starts an agent process to ask. Checking for
 a newer version does reach the network (npm's registry, and x.ai for Grok), but the only
 thing sent is a package name; no session content is involved. It is on by default and can
 be switched off.
 
-**agentory never updates an agent for you.** It shows you the command and you run it. That
+**Agentory never updates an agent for you.** It shows you the command and you run it. That
 is not caution for its own sake: an early probe of ours pressed Enter on Codex's "update
 now?" dialog and uninstalled it.
 
@@ -93,15 +98,15 @@ Download the latest release and run it. Two forms are published:
 
 | File | What it is |
 |---|---|
-| `agentory-<version>-x64.exe` | Installer. Installs for the current user, no administrator rights needed. |
-| `agentory-<version>-portable.exe` | Single file, no installation. Slower to start, since it unpacks itself each time. |
+| `Agentory-<version>-x64.exe` | Installer. Installs for the current user, no administrator rights needed. |
+| `Agentory-<version>-portable.exe` | Single file, no installation. Slower to start, since it unpacks itself each time. |
 
 Both store their data in `%APPDATA%\agentory`, so you can switch between them without
 losing your workspace.
 
 ### Windows will warn you the first time
 
-agentory is not code-signed, so Windows shows **"Windows protected your PC — Unknown
+Agentory is not code-signed, so Windows shows **"Windows protected your PC — Unknown
 publisher"** on first run. Click **More info**, then **Run anyway**.
 
 This is expected for an unsigned open-source build. SmartScreen is a reputation service:
@@ -124,15 +129,19 @@ npm run package    # build the installer and the portable exe into release/
 files. They skip themselves when the thing they need is not present, rather than passing
 vacuously.
 
-Four end-to-end checks run the real packaged app against a machine state that unit tests
-cannot create. Each one builds first and exits non-zero on failure.
+Five end-to-end checks run the real app against a machine state that unit tests cannot
+create. Each one builds first and exits non-zero on failure.
 
 ```bash
 npm run verify:clean     # a brand-new machine with no agent installed at all
 npm run verify:broken    # our own records corrupted, plus a session whose directory is gone
-npm run verify:orphans   # five agents running, then a normal quit — nothing may survive it
+npm run verify:tray      # close the window — the app and the sessions must both survive it
+npm run verify:orphans   # five agents running, then quit — both exit paths, nothing may survive
 npm run verify:dpapi     # the encrypted API key survives a fresh process
 ```
+
+Each one runs against its own `--user-data-dir`, so your own instance can stay open and
+its single-instance lock will not silently block them into a meaningless pass.
 
 `verify:clean` and `verify:broken` build a fake home directory from three environment
 variables, so they never touch your own configuration.
@@ -148,15 +157,15 @@ Not built yet:
 - **Auto-update.** There is no release feed yet, so there is nothing to update from.
 - **Split panes.** One session is visible at a time; switching is by tab or `Ctrl+Tab`.
 - **Two sessions of the same agent in the same directory.** An agent assigns a session id
-  only after the session starts, and agentory does not backfill it, so a workspace entry
+  only after the session starts, and Agentory does not backfill it, so a workspace entry
   created in-app is keyed by `(agent, directory)`. Starting a second one there is refused
   with an explanation rather than silently producing a tab you cannot open or close.
 
 Known limitations:
 
-- A session created inside agentory cannot be added to favourites until it has an id, and
+- A session created inside Agentory cannot be added to favourites until it has an id, and
   agents only assign one after the session starts.
-- Opening the history dialog takes **1–2 seconds** on a 437-session corpus. agentory
+- Opening the history dialog takes **1–2 seconds** on a 437-session corpus. Agentory
   deliberately keeps no index database and rescans instead; that decision needs revisiting
   as corpora grow.
 - Summaries skip OpenCode sessions, because OpenCode already stores a model-generated

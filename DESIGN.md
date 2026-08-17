@@ -487,6 +487,10 @@ agent 的启动动画、排版、Pi 的极简风格 **一律不动**。浅色/�
 
 **不跨应用重启续做** —— 已恢复的会话是本应用的子进程，应用关闭它们就没了，续做没有意义。
 
+> **⚠️ 这句话的前提在 D-20 变了。** 托盘常驻之后「叉掉窗口」不再等于「关闭应用」，
+> 会话跨窗口关闭是活的。真正结束它们的只剩两件事：从托盘退出、以及关机。
+> 结论本身仍然成立（跨**进程**重启确实续不了），但别再拿这句话去否定托盘。
+
 ### D-13 · 扫描 + 摘要是可续的后台作业，但不建作业队列
 
 D-8 的 opt-in 导入才是真正的长任务：847 个会话 + 约 678 次 DeepSeek 调用，分钟级，
@@ -1216,6 +1220,80 @@ D-12 的确认点没有丢：**不点就不花 token**。变的只是它不再�
 `terminal/resolve.ts` 自己写着那几个用 `process.execPath` 的单元测试证明不了 ——
 vitest 下 `execPath` 就是 node。所以 `NEW=all` 在真 Electron 里把五个 agent 各起一次，
 五个终端都要有真实内容。「codex / pi 被解析成 `electron.exe`」当年正是这么漏过去的。
+
+### D-20 · 托盘常驻，以及三处「说人话」（`add-tray`，2026-08-17）
+
+0.1.0 发布后用户实际用起来提的四件事。一件改生命周期，三件是同一类问题：
+**界面没把自己解释清楚。**
+
+#### 叉掉窗口 = 收进托盘
+
+用户的原话：「一直开着的会话」是这个产品要解决的最大痛点。而在这之前，
+`window-all-closed → app.quit() → will-quit → killAllSessions()` ——
+**叉掉窗口就是杀掉全部 agent**。实测（`scripts/verify-tray.cjs`）：
+
+```
+叉掉窗口之后：应用进程 0 个、agent 进程 0 个     ← 修之前
+叉掉窗口之后：应用进程 4 个、agent 进程 1 个 ✓   ← 修之后
+```
+
+**隐藏而不是销毁窗口**：销毁会丢掉全部 xterm 面板与滚动缓冲，再显示时每个 pty
+都要重新 attach；而且 `mainWindow` 变 null 会连带打断 `second-instance` 与
+`notify:bell` 那两条 `if (!win) return` —— 后者会让应用变成**叫不出来的僵尸**。
+
+#### 顺带发现：优雅退出那条路从来没被测过
+
+`app.exit()` 按 Electron 文档明确「不触发 before-quit 和 will-quit」，而冒烟的
+quit 回调一直是 `app.exit(code)` —— 也就是 **`killAllSessions()` 一次都没跑过**。
+`verify:orphans` 之所以绿，靠的是主进程死亡本身销毁 ConPTY 句柄。
+（那个脚本的文件头注释写着它验的是 `killAllSessions`，那句话与实际代码路径不符，已改。）
+
+托盘之后「从托盘退出」是用户**唯一**的退出方式，走的正是这条路。所以加了
+`QUIT=graceful`，`verify:orphans` 两条路各跑一遍。
+
+**过程中抓到一个假绿**：`process.exitCode = 1` 之后 `app.quit()`，进程实际退出码是
+**0** —— `app.quit()` 走完关闭流程自己调的是 `exit(0)`，把失败整个吞掉。
+改成在 `will-quit` 里（`killAllSessions()` 跑完之后）用 `app.exit(code)` 带出去。
+
+**还抓到一个假复现**：第一版 `verify-tray.cjs` 不隔离 userData，被用户自己那份
+正在跑的实例用单实例锁挡掉，什么都没跑，然后「agent 进程 0 个」**看起来像成功
+复现了 bug**。假的复现比假绿更糟。所有 verify 脚本现在各用各的 `--user-data-dir`。
+
+#### DeepSeek：从「消失」改成「灰掉 + 说清原因」
+
+开关打开但没填 key 时，三个操作按钮是 `hidden` —— 整排消失且不说为什么；
+说明段落把隐私讲得很透，却**从头到尾没提过需要一把 DeepSeek 的 key、更没说去哪申请**。
+
+改成照 `verCheck` 的先例：**按钮留在原地置 `disabled`，相邻的 `.desc` 给原因，
+而原因排在三元表达式的第一支**（它压过开关状态那句话）。
+「看看会发送什么」**不禁用** —— 它纯本地拼载荷、不出网、不需要 key，
+恰恰是还没拿到 key 的人最该先点的那一个。
+
+顺带修了两个已存在的缺口：`.btn-ghost` 没有 `:disabled` 样式（禁用的「现在检查」
+看起来和能点的一模一样）；`data-url` 的点击委托只挂在 `#newNoAgent` 上，
+往别处加外链会**点了毫无反应** —— 改成文档级委托。
+
+#### 「未启动」→「点击恢复」
+
+作者本人被这四个字问住过。它的真实含义是「在你的工作台上，但进程随上次退出一起没了」，
+而第三行那句灰字（点下去会跑的命令）叠了 `--c-dim` + `opacity: 0.7` 两层衰减，
+几乎看不见 —— 那一行恰恰是「未启动是什么意思」的答案。
+
+状态字改成**说可做的动作**，并与上方横幅的「上次留下 N 个会话」统一措辞
+（以前同一件事两种叫法）。
+
+#### agentory → Agentory
+
+**改**：`productName`、`shortcutName`、全部可见文案、README 与资产名。
+**不改**：`appId`（NSIS 升级与卸载入口的唯一键，UUIDv5 → `3bb6a39a-…`，
+改了控制面板会多出一条卸不掉的僵尸记录）、`package.json` 的 `name`
+（npm 规范不允许大写，而且它才是 `%APPDATA%\agentory` 的唯一来源）、
+`AGENTORY_*` 环境变量、`window.agentory` 桥、`__agentory*` 钩子。
+
+> **一个被推翻的假设**：`userData` **不是**从 `electron-builder.yml` 的 `productName`
+> 推的，而是 `package.json` 的 `name`（已装的那份 asar 里的 package.json 根本没有
+> productName 字段）。实测 `%APPDATA%\agentory` 与 `%APPDATA%\Agentory` 是同一个目录
+> （NTFS 大小写不敏感，磁盘上真名是小写）—— 所以数据不可能"搬家"。
 
 ### D-U9 · 本轮 logo + UI 没走 openspec
 

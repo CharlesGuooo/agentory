@@ -365,10 +365,14 @@ body { display: grid; grid-template-rows: var(--titlebar-h) 1fr; }
   padding: 12px 16px; border-top: 1px solid var(--c-line);
 }
 
-/* 侧栏里「未启动」的成员 */
-/* 「未启动」时才出现：点下去会执行什么。比第二行更弱一层 —— 它是机器的话，不是会话的意思。 */
+/* 侧栏里「点击恢复」的成员 */
+/*
+  只在「点击恢复」时出现：点下去会执行什么。它比第二行弱一层 —— 是机器的话，不是会话的意思。
+  但**原来弱过头了**：`--c-dim` 上再叠 `opacity: 0.7`，两层衰减叠在一起几乎看不见，
+  而这一行恰恰是「未启动到底是什么意思」的答案。去掉那层 opacity，只留字号和等宽字区分层级。
+*/
 .sess .cmd {
-  font-family: var(--mono); font-size: var(--t-xs); color: var(--c-dim); opacity: 0.7;
+  font-family: var(--mono); font-size: var(--t-xs); color: var(--c-dim);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 /* 行内动作：**悬停或聚焦才出现**。
@@ -432,6 +436,22 @@ body { display: grid; grid-template-rows: var(--titlebar-h) 1fr; }
 .resume-bar .x:hover { color: var(--c-fg); background: var(--c-line); }
 .resume-bar .note { flex: 1 0 100%; color: var(--c-dim); font-size: var(--t-xs); }
 .resume-bar .note:empty { display: none; }
+
+/* 正文里的外链。是 <button> 不是 <a> —— 渲染层里没有真正的导航，
+   一切外链都走 shell.openExternal（preload 只放行 https）。 */
+.link {
+  border: 0; background: none; padding: 0; font: inherit;
+  color: var(--c-accent); cursor: pointer; text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link:hover { color: var(--c-fg); }
+
+/* 禁用的次要按钮。**这条规则原来不存在** —— 于是设置里那个被禁用的「现在检查」
+   看起来和能点的一模一样，只有鼠标指针不同。灰掉却不显灰，等于没灰。 */
+.btn-ghost:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
 /* 历史弹窗里「有来源没读出来」那一条。少掉的会话必须有个说法 */
 .hist-problems {

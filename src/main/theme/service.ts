@@ -29,6 +29,13 @@ interface Settings {
    * 不含任何用户内容，是 D-8 的第三档，和「生成摘要」那种内容出境不是一回事。
    */
   versionCheckEnabled: boolean;
+  /**
+   * 「叉掉窗口 = 收进托盘」这件事只在第一次发生时提示一次。
+   *
+   * 它是**记住说过没说过**，不是一个用户能调的开关，所以不进设置界面。
+   * 但它得和别的设置存在一起 —— 一类记录一个文件。
+   */
+  trayHintShown: boolean;
 }
 
 const DEFAULTS: Settings = {
@@ -36,6 +43,7 @@ const DEFAULTS: Settings = {
   mode: "system",
   summariesEnabled: false,
   versionCheckEnabled: true,
+  trayHintShown: false,
 };
 
 const settingsPath = (): string => join(app.getPath("userData"), "settings.json");
@@ -53,6 +61,7 @@ function readSettings(): Settings {
       summariesEnabled: raw.summariesEnabled === true,
       // 默认开，所以只有显式写 false 才关
       versionCheckEnabled: raw.versionCheckEnabled !== false,
+      trayHintShown: raw.trayHintShown === true,
     };
   } catch {
     // 没有设置文件、或文件坏了 —— 用默认值，不是错误
@@ -70,6 +79,12 @@ export const summariesEnabled = {
 export const versionCheckEnabled = {
   get: (): boolean => readSettings().versionCheckEnabled,
   set: (v: boolean): void => writeSettings({ ...readSettings(), versionCheckEnabled: v }),
+};
+
+/** 托盘提示说过没说过。同一份文件，同样的读改写。 */
+export const trayHintShown = {
+  get: (): boolean => readSettings().trayHintShown,
+  set: (v: boolean): void => writeSettings({ ...readSettings(), trayHintShown: v }),
 };
 
 function writeSettings(s: Settings): void {

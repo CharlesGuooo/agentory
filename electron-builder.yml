@@ -4,7 +4,7 @@
 # most here need an explanation, and JSON cannot carry one.
 
 appId: com.agentory.app
-productName: agentory
+productName: Agentory
 copyright: MIT © CharlesGuooo
 
 directories:
@@ -77,7 +77,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: agentory
+  shortcutName: Agentory
   # The uninstaller leaves %APPDATA%/agentory alone, so workspace.json and
   # favorites.json survive a reinstall. Sessions are the user's data, not ours.
   deleteAppDataOnUninstall: false

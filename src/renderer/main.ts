@@ -123,7 +123,7 @@ function paint(): void {
   // 「放进主题目录」得说清楚是哪个目录 —— 它在新机器上还不存在
   $("themeDesc").textContent = `把自己的 JSON 放进 ${theme.themesDir} 即可新增`;
   setModeButtons(theme.mode);
-  document.title = `agentory — ${t.name}`;
+  document.title = `Agentory — ${t.name}`;
   selfCheck["theme"] = { id: t.id, variant, bg: colors.bg };
   selfCheck["workspace"] = {
     total: views.length,
@@ -493,7 +493,16 @@ if (!agentory) {
         $("newAgents").innerHTML = `<span class="desc">检测失败：${esc(cleanIpcError(String(e)))}</span>`;
       });
   });
-  $("newNoAgent").addEventListener("click", (e) => {
+  /**
+   * 外链一律走这一个文档级委托。
+   *
+   * 原来它只挂在 `#newNoAgent` 上，于是往别处（比如设置里的摘要说明）加一个
+   * `data-url` 按钮，**点了会毫无反应** —— 一个看着能点、实际什么都不做的控件，
+   * 正是这个项目反复抓到的那一类。挂在 document 上就不存在「放错容器」这回事。
+   *
+   * 安全边界不在这里：`api.openUrl` 走 preload，那里只放行 https。
+   */
+  document.addEventListener("click", (e) => {
     const u = (e.target as HTMLElement).closest<HTMLElement>("[data-url]")?.dataset["url"];
     if (u) api.openUrl(u);
   });
@@ -732,7 +741,22 @@ if (!agentory) {
     ($("sumToggle") as HTMLButtonElement).textContent = on ? "已开启" : "关闭";
     $("sumToggle").setAttribute("aria-pressed", String(on));
     $("sumKeyRow").hidden = !on;
-    $("sumActions").hidden = !on || !st.hasKey;
+    /**
+     * **没有 key 时按钮要灰掉，不是消失。**
+     *
+     * 原来是 `hidden = !on || !st.hasKey` —— 整排按钮直接不存在，而且不说为什么。
+     * 用户打开开关，看到一个输入框和一行价钱，然后什么都没有。
+     *
+     * 照 `verCheck` 那个先例：**按钮留在原地并置 `disabled`，
+     * 相邻的 `.desc` 给原因，而且原因排在三元表达式的第一支**。
+     *
+     * 「看看会发送什么」**不禁用** —— 它是纯本地拼载荷，不出网、不需要 key，
+     * 而且恰恰是还没拿到 key 的人最该先点的那一个（先看清要发什么，再决定要不要办 key）。
+     */
+    $("sumActions").hidden = !on;
+    for (const id of ["sumRunMine", "sumRunAll"]) {
+      ($(id) as HTMLButtonElement).disabled = !st.hasKey;
+    }
     ($("sumKey") as HTMLInputElement).disabled = st.keyFromEnv;
     ($("sumKey") as HTMLInputElement).placeholder = st.keyFromEnv
       ? "已由 DEEPSEEK_API_KEY 环境变量提供"
@@ -743,9 +767,12 @@ if (!agentory) {
     // 点完才告诉你要花多少，那不叫知情。单条价钱不需要知道总数，也就不会被异步结果盖掉。
     // 估算依据：实测载荷约 1200 输入 token，输出 50。2026-08-16 起改峰谷计费，故标日期。
     const per = (1200 * st.price.in + 50 * st.price.out) / 1e6;
-    $("sumStatus").textContent = on
-      ? `已缓存 ${st.cached} 条 · ${st.model} · 每条约 $${per.toFixed(4)}（估算，价格查证于 ${st.price.checkedAt}）`
-      : "关闭时完全离线，第二行退回「开头那句话」";
+    // 顺序照 `verCheck`：**挡住你的那个原因排在最前面**，它压过「开着还是关着」那句话
+    $("sumStatus").textContent = !on
+      ? "关闭时完全离线，第二行退回「开头那句话」"
+      : !st.hasKey
+        ? "还差一把 DeepSeek API key —— 填进上面那个框，下面两个按钮才能用"
+        : `已缓存 ${st.cached} 条 · ${st.model} · 每条约 $${per.toFixed(4)}（估算，价格查证于 ${st.price.checkedAt}）`;
   }
 
   const loadSumState = (): Promise<void> => api.summaryState().then(renderSumState);

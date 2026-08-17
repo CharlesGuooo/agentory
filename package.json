@@ -21,6 +21,7 @@
     "verify:clean": "electron-vite build && node scripts/verify-clean.cjs",
     "verify:broken": "electron-vite build && node scripts/verify-broken.cjs",
     "verify:orphans": "electron-vite build && node scripts/verify-orphans.cjs",
+    "verify:tray": "electron-vite build && node scripts/verify-tray.cjs",
     "verify:dpapi": "electron-vite build && node scripts/verify-dpapi.cjs"
   },
   "dependencies": {
