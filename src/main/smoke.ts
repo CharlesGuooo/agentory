@@ -607,10 +607,30 @@ async function smokeEnd(win: BrowserWindow): Promise<void> {
  * `AGENTORY_SMOKE_SHOT=<目录>`，配合 `SHOT_STEP` 决定截哪几屏。
  */
 async function shoot(win: BrowserWindow, dir: string, name: string): Promise<void> {
+  /**
+   * **每张图自报当前最上层是什么。**
+   *
+   * 这一步之前，`shoot()` 从不检查自己要拍的东西在不在屏幕上 —— 某次上一步的
+   * 关闭动作没生效，接下来两张图拍的都还是上一屏，而文件名照旧。
+   * 实测撞到过：`07-MCP矩阵.png` 里装的是快捷键面板，日志一片绿。
+   *
+   * **文件名说谎的截图比没有截图更糟** —— 评审会照着它下结论（我就下过）。
+   * 不做「名字与内容必须匹配」的强断言（那要维护一张映射表），
+   * 只把实际状态打出来：让说谎的那一张在日志里就看得出来。
+   */
+  const top = String(
+    await run(
+      win,
+      `(() => {
+        const open = [...document.querySelectorAll(".scrim")].filter((s) => !s.hidden).map((s) => s.id);
+        return open.length ? open.join("+") : "(主界面)";
+      })()`,
+    ),
+  );
   const img = await win.capturePage();
   const file = join(dir, `${name}.png`);
   writeFileSync(file, img.toPNG());
-  say("smoke-shot", `${name} → ${img.getSize().width}×${img.getSize().height}`);
+  say("smoke-shot", `${name} → ${img.getSize().width}×${img.getSize().height}  最上层：${top}`);
 }
 
 /**
