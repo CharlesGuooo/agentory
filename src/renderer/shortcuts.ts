@@ -20,7 +20,10 @@ export type ActionId =
   | "next"
   | "prev"
   | "jump"
-  | "help";
+  | "help"
+  | "fontUp"
+  | "fontDown"
+  | "fontReset";
 
 export interface Shortcut {
   /** 展示用。面板里逐字显示。 */
@@ -38,6 +41,21 @@ export const SHORTCUTS: Shortcut[] = [
   { keys: "Ctrl+Shift+Tab", label: "上一个会话", action: "prev" },
   { keys: "Ctrl+Alt+1…9", label: "跳到第 n 个会话", action: "jump" },
   { keys: "F1", label: "这份快捷键表", action: "help" },
+
+  /**
+   * **上面那条「全部走 Ctrl+Shift」的三个例外，理由要说清楚。**
+   *
+   * 1. 它们本来就被占着 —— Chromium 拿 `Ctrl+-` 做整页缩放，而那个缩放会把布局
+   *    一起缩、原生窗口控件却不跟着缩，**比例当场失调**（用户截图为证）。
+   *    也就是说这三个键从来没能传给终端过，改绑不夺走任何现在能用的东西。
+   * 2. 每一个终端应用（Windows Terminal、VS Code、iTerm）都用这三个键调字号。
+   *    这是肌肉记忆里已经存在的东西，另起一套才是倒退。
+   * 3. 放大那半今天**本来就是坏的**（Ctrl+= 不生效）—— 一半能用一半不能用，
+   *    比两半都不能用更糟。
+   */
+  { keys: "Ctrl+=", label: "终端字号放大", action: "fontUp" },
+  { keys: "Ctrl+-", label: "终端字号缩小", action: "fontDown" },
+  { keys: "Ctrl+0", label: "终端字号回默认", action: "fontReset" },
 ];
 
 /** 只在面板里露个脸的键。它们由别的路径处理，塞进 SHORTCUTS 会让 action 字段说谎。 */
@@ -91,6 +109,27 @@ export function resolve(e: KeyLike, inField: boolean): Hit | null {
 
   if (e.ctrlKey && !e.altKey && e.code === "Tab") {
     return { action: e.shiftKey ? "prev" : "next" };
+  }
+
+  /**
+   * 字号三键。**必须匹配，因为不匹配就等于放任 Chromium 去做整页缩放。**
+   *
+   * `Shift` 不参与判断：主键盘区打 `+` 就是 `Shift+=`，要求「不按 Shift」
+   * 会让用户按了 `Ctrl+加号` 却什么都不发生 —— 那正是今天坏掉的那一半。
+   * 小键盘的 `NumpadAdd` / `NumpadSubtract` 一并认。
+   */
+  if (e.ctrlKey && !e.altKey) {
+    switch (e.code) {
+      case "Equal":
+      case "NumpadAdd":
+        return { action: "fontUp" };
+      case "Minus":
+      case "NumpadSubtract":
+        return { action: "fontDown" };
+      case "Digit0":
+      case "Numpad0":
+        return { action: "fontReset" };
+    }
   }
   if (e.ctrlKey && e.altKey && !e.shiftKey) {
     const m = /^Digit([1-9])$/.exec(e.code);

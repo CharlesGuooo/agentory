@@ -5,7 +5,9 @@
 :root {
   /* 必须与主进程的 TITLEBAR_HEIGHT 一致，否则原生窗口控件会错位 */
   --titlebar-h: 40px;
-  --side-w: 236px;
+  /* 侧栏宽度跟着字号走。写死的话，选了「特大」之后每一行都在同一个宽度里折成四行 ——
+     字变大了容器没跟着，等于只把问题挪了个地方。 */
+  --side-w: calc(236px * var(--ui-font-scale));
   --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
 
@@ -18,13 +20,17 @@
   --r-pill: 999px;
 
   /* 字号尺度。此前有 12 个值，其中 11 / 11.5 / 12 / 12.5 同时在用 ——
-     肉眼分不出差别，却是四个各自独立的决定。收成六档。 */
-  --t-xs: 10.5px;
-  --t-sm: 11.5px;
-  --t: 12.5px;
-  --t-md: 13px;   /* 与 body 同级 */
-  --t-lg: 15px;
-  --t-xl: 19px;
+     肉眼分不出差别，却是四个各自独立的决定。收成五档。
+
+     五档全部乘 --ui-font-scale（设置里可调，默认 1）：乘一个倍数而不是各写一套，
+     否则「改字号」就变成五个会走散的决定 —— 正是上面那个老问题的来源。
+     （原本还有 --t-xl，全仓库零处引用，一并删了。） */
+  --ui-font-scale: 1;
+  --t-xs: calc(10.5px * var(--ui-font-scale));
+  --t-sm: calc(11.5px * var(--ui-font-scale));
+  --t: calc(12.5px * var(--ui-font-scale));
+  --t-md: calc(13px * var(--ui-font-scale));   /* 与 body 同级 */
+  --t-lg: calc(15px * var(--ui-font-scale));
 
   /* 动效。此前整份样式表 transition 只出现 1 次，而那一次是
      prefers-reduced-motion 的关闭开关 —— 写了兜底，却没有东西可关。 */
@@ -550,3 +556,11 @@ body { display: grid; grid-template-rows: var(--titlebar-h) 1fr; }
 .ver-cmd:hover { color: var(--c-fg); border-color: var(--c-accent); }
 .ver-cmd.copied { color: var(--c-accent); border-color: var(--c-accent); }
 .btn-mini { padding: 3px 8px; font-size: var(--t-xs); flex: none; }
+
+/* 设置里「字号与字体」那一节：三行的标签要对齐，否则每行的控件各自起头 */
+.fixed-label { flex: 0 0 68px; }
+.num {
+  min-width: 2.2em; text-align: center;
+  font-variant-numeric: tabular-nums; color: var(--c-fg);
+}
+.btn-ghost.sm { padding: 2px 9px; font-size: var(--t-sm); }

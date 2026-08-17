@@ -170,7 +170,14 @@ const api = {
     ipcRenderer.send("window:overlay", { color, symbolColor }),
 
   themeState: (): Promise<ThemeState> => ipcRenderer.invoke("theme:state"),
-  setTheme: (patch: { themeId?: string; mode?: ModeSetting }): Promise<ThemeState> =>
+  setTheme: (patch: {
+    themeId?: string;
+    mode?: ModeSetting;
+    uiFontScale?: number;
+    termFontSize?: number;
+    /** `null` = 回到内置的等宽字体栈 */
+    termFontFamily?: string | null;
+  }): Promise<ThemeState> =>
     ipcRenderer.invoke("theme:set", patch),
   onThemeChanged: (cb: (s: ThemeState) => void): (() => void) => {
     const h = (_e: unknown, s: ThemeState): void => cb(s);

@@ -103,6 +103,103 @@ function colorsNow(): ReturnType<typeof toXtermTheme> | null {
   return t ? toXtermTheme(t[resolveVariant(theme.mode, theme.systemPrefersDark)]) : null;
 }
 
+/** 终端字体栈的内置默认。设置里选了具体字体时排在它前面，选不中还能退回来。 */
+const TERM_FONT_FALLBACK = '"Cascadia Mono", "Cascadia Code", Consolas, monospace';
+
+/**
+ * 候选等宽字体。**这只是候选，不是结论** —— 装没装、是不是真等宽、
+ * CJK 是不是双宽，全部由 `probeFonts()` 当场量出来。
+ *
+ * 写死一串名字直接塞进下拉是错的：用户选了个本机没有的，浏览器静默退回下一个，
+ * 界面上看起来「选了但没生效」—— 这个项目已经在别处栽过一次这种无声失败。
+ */
+const FONT_CANDIDATES = [
+  "Cascadia Mono",
+  "Cascadia Code",
+  "Consolas",
+  "Courier New",
+  "Lucida Console",
+  "JetBrains Mono",
+  "Fira Code",
+  "Source Code Pro",
+  "IBM Plex Mono",
+  "Sarasa Mono SC",
+  "Sarasa Term SC",
+  "Noto Sans Mono CJK SC",
+  "MS Gothic",
+  "NSimSun",
+];
+
+interface FontProbe {
+  name: string;
+  /** 本机真的有它 */
+  installed: boolean;
+  /** 拉丁字符等宽 */
+  mono: boolean;
+}
+
+/**
+ * **这里原本还量了「CJK 是不是恰好双宽」，并在不是的字体旁边标 ⚠。那是错的，已删。**
+ *
+ * 实测本机 6 个等宽字体里有 4 个「CJK 非双宽」，其中包括我们自己的默认
+ * `Cascadia Mono` —— 而用户拿 Cascadia Mono 跑出来的中文表格是**对齐的**。
+ *
+ * 原因：xterm 按**格子**排版。宽字符固定占 2 格，glyph 画在那 2 格里，
+ * 窄了留白、宽了裁掉，**下一格的起点不变**。所以表格不会错位，
+ * 差别只在字形看起来挤或松 —— 而那点差别不值得在默认字体旁边挂一个警告。
+ *
+ * 挂着的话就是 D-W1 说的那件事：**理直气壮地显示错的东西，比不显示更糟。**
+ */
+
+/**
+ * 用 canvas 量字体。三件事都靠**宽度比对**，不靠任何「字体是否可用」的 API
+ * （`document.fonts.check` 对本机字体不可靠）。
+ *
+ * 装没装：拿它和一个必然不存在的家族比 —— 宽度不同就说明它真的被用上了。
+ */
+function probeFonts(names: string[]): FontProbe[] {
+  const ctx = document.createElement("canvas").getContext("2d");
+  if (!ctx) return names.map((name) => ({ name, installed: false, mono: false }));
+  const w = (text: string, family: string): number => {
+    ctx.font = `16px ${family}`;
+    return ctx.measureText(text).width;
+  };
+  const near = (a: number, b: number): boolean => Math.abs(a - b) < 0.5;
+
+  // 一个必然不存在的家族名，用来拿到 monospace 兜底的度量
+  const BOGUS = '"__agentory_no_such_font__", monospace';
+  const base = w("iiiiiiiiii", BOGUS);
+
+  return names.map((name) => {
+    const q = `"${name}", monospace`;
+    const installed = !near(w("iiiiiiiiii", q), base) || !near(w("WWWWWWWWWW", q), base);
+    if (!installed) return { name, installed: false, mono: false };
+    return { name, installed: true, mono: near(w("i", q), w("W", q)) };
+  });
+}
+
+/**
+ * 把字号 / 字体应用到界面与全部终端。
+ *
+ * 界面这边只改一个 CSS 变量 —— 六个字号档都是从它 `calc()` 出来的，
+ * 所以不存在「改了五处漏一处」这回事。
+ *
+ * 终端这边**改完必须 `fit.fit()`**：字号变了每格的像素宽高就变了，
+ * 不重算行列数的话 agent 那边仍按旧尺寸排版，画出来的框线表格会整片错位。
+ */
+function applyFonts(): void {
+  if (!theme) return;
+  document.documentElement.style.setProperty("--ui-font-scale", String(theme.uiFontScale));
+  const family = theme.termFontFamily
+    ? `"${theme.termFontFamily}", ${TERM_FONT_FALLBACK}`
+    : TERM_FONT_FALLBACK;
+  for (const p of panes.values()) {
+    p.term.options.fontSize = theme.termFontSize;
+    p.term.options.fontFamily = family;
+    p.fit.fit();
+  }
+}
+
 function paint(): void {
   if (!theme) return;
   const t = theme.themes.find((x) => x.id === theme!.themeId) ?? theme.themes[0];
@@ -113,6 +210,7 @@ function paint(): void {
   for (const p of panes.values()) p.term.options.theme = toXtermTheme(colors);
   const root = document.documentElement;
   for (const [k, v] of Object.entries(toCssVars(colors))) root.style.setProperty(k, v);
+  applyFonts();
   root.dataset["variant"] = variant;
   agentory?.setWindowOverlay(colors.chrome, colors.dim);
 
@@ -184,7 +282,20 @@ if (!agentory) {
     host.appendChild(el);
 
     const c = colorsNow();
-    const term = new Terminal({ ...TERM_OPTS, ...(c ? { theme: c } : {}) });
+    // 新面板一出生就用当前字号 —— 不然它会先按默认尺寸排一遍版再被 applyFonts 改，
+    // agent 那一瞬间收到的是错的行列数
+    const term = new Terminal({
+      ...TERM_OPTS,
+      ...(c ? { theme: c } : {}),
+      ...(theme
+        ? {
+            fontSize: theme.termFontSize,
+            fontFamily: theme.termFontFamily
+              ? `"${theme.termFontFamily}", ${TERM_FONT_FALLBACK}`
+              : TERM_FONT_FALLBACK,
+          }
+        : {}),
+    });
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(el);
@@ -245,6 +356,7 @@ if (!agentory) {
   // ---------- 设置 ----------
   $("gear").addEventListener("click", () => {
     openSettings();
+    renderFontRow();
     void loadSumState();
     void loadVerState();
     // 看过就不用再提醒了
@@ -271,6 +383,18 @@ if (!agentory) {
         paint();
       });
     }
+  });
+
+  // ---------- 字号与字体 ----------
+  $("uiFontSeg").addEventListener("click", (e) => {
+    const v = (e.target as HTMLElement).dataset["uiscale"];
+    if (v) setUiFontScale(Number(v));
+  });
+  $("termFontDown").addEventListener("click", () => setTermFontSize((theme?.termFontSize ?? 13) - 1));
+  $("termFontUp").addEventListener("click", () => setTermFontSize((theme?.termFontSize ?? 13) + 1));
+  $("termFontFamily").addEventListener("change", () => {
+    const v = ($("termFontFamily") as HTMLSelectElement).value;
+    setTermFontFamily(v === "" ? null : v);
   });
 
   // ---------- 收藏夹 ----------
@@ -1106,6 +1230,58 @@ if (!agentory) {
   /** 有终端面板的会话，按顶栏标签页的顺序。next/prev/jump 都在这个列表上走。 */
   const live = (): SessionView[] => views.filter((v) => v.paneId !== null);
 
+  /** 字体探测只做一次 —— 本机装了什么在应用开着的这段时间里不会变。 */
+  let fontProbes: FontProbe[] | null = null;
+
+  /** 把设置面板里那一节画出来。字号改了之后也要重画，否则数字停在旧值。 */
+  function renderFontRow(): void {
+    if (!theme) return;
+    // 选中态走 `aria-pressed`，和「明暗」那排同一套 —— `.seg` 的样式就是按它写的。
+    // 第一版用了 `classList.toggle("on")`：一个没有任何 CSS 规则的类名，
+    // 结果四个按钮全是未选中的样子（截图抓到的，冒烟看不出来）。
+    for (const b of $("uiFontSeg").querySelectorAll<HTMLButtonElement>("button")) {
+      b.setAttribute("aria-pressed", String(Number(b.dataset["uiscale"]) === theme!.uiFontScale));
+    }
+    $("termFontNow").textContent = String(theme.termFontSize);
+
+    fontProbes ??= probeFonts(FONT_CANDIDATES);
+    const usable = fontProbes.filter((f) => f.installed && f.mono);
+    const sel = $("termFontFamily") as HTMLSelectElement;
+    sel.innerHTML =
+      `<option value="">默认（Cascadia Mono → Consolas）</option>` +
+      usable.map((f) => `<option value="${esc(f.name)}">${esc(f.name)}</option>`).join("");
+    sel.value = theme.termFontFamily ?? "";
+
+    $("termFontNote").textContent =
+      `本机可用的等宽字体 ${usable.length} 个（共探测 ${fontProbes.length} 个候选）。列表里只有真装了的 —— 选一个没装的会静默退回，看起来像没生效。`;
+  }
+
+  /**
+   * 改字号。**范围由主进程夹**（设置文件用户会手改），这里只负责把结果画上去。
+   * 三个入口共用它：Ctrl+= / Ctrl+- / Ctrl+0，以及设置面板里的 −/+。
+   */
+  const setTermFontSize = (n: number): void => {
+    void api.setTheme({ termFontSize: n }).then((s) => {
+      theme = s;
+      applyFonts();
+      renderFontRow();
+    });
+  };
+  const setUiFontScale = (n: number): void => {
+    void api.setTheme({ uiFontScale: n }).then((s) => {
+      theme = s;
+      applyFonts();
+      renderFontRow();
+    });
+  };
+  const setTermFontFamily = (f: string | null): void => {
+    void api.setTheme({ termFontFamily: f }).then((s) => {
+      theme = s;
+      applyFonts();
+      renderFontRow();
+    });
+  };
+
   function runAction(hit: NonNullable<ReturnType<typeof resolve>>): void {
     const l = live();
     const at = l.findIndex((v) => v.key === activeKey);
@@ -1127,6 +1303,17 @@ if (!agentory) {
         break;
       case "prev":
         if (l.length > 1) show(l[(at - 1 + l.length) % l.length]!.key);
+        break;
+      // 这三个键以前被 Chromium 拿去做整页缩放（把布局一起缩，而原生窗口控件
+      // 不跟着缩，比例当场失调）。改绑到终端字号 —— 每个终端应用都是这么做的。
+      case "fontUp":
+        setTermFontSize((theme?.termFontSize ?? 13) + 1);
+        break;
+      case "fontDown":
+        setTermFontSize((theme?.termFontSize ?? 13) - 1);
+        break;
+      case "fontReset":
+        setTermFontSize(13);
         break;
       case "jump": {
         const target = l[(hit.n ?? 1) - 1];
@@ -1260,6 +1447,23 @@ if (!agentory) {
 }
 
 (window as unknown as { __agentorySelfCheck: unknown }).__agentorySelfCheck = selfCheck;
+
+/**
+ * 字号状态给冒烟看。**要读终端实例上的真实值**，不读我们自己的 state ——
+ * 「设置存下了」和「终端真的用上了」是两件事，只验前者等于没验。
+ */
+(window as unknown as { __agentoryFontState: () => unknown }).__agentoryFontState = () => {
+  const first = [...panes.values()][0];
+  return {
+    uiFontScale: getComputedStyle(document.documentElement).getPropertyValue("--ui-font-scale").trim(),
+    termFontSize: first?.term.options.fontSize ?? null,
+    termFontFamily: first?.term.options.fontFamily ?? null,
+    panes: panes.size,
+    // 探测结果也放进来：这台机器上到底有哪些等宽字体、CJK 是不是双宽。
+    // 「列表里有东西」和「列的是对的」是两件事。
+    fonts: probeFonts(FONT_CANDIDATES).filter((f) => f.installed),
+  };
+};
 const dumpPane = (paneId: string): string => {
   const p = panes.get(paneId);
   if (!p) return "(没有终端)";

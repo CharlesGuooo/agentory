@@ -1013,6 +1013,66 @@ async function smokeBroken(win: BrowserWindow): Promise<void> {
   check("broken", b.标签页数 === 0, `启动失败却开出了 ${b.标签页数} 个标签页`);
 }
 
+/**
+ * 缩放键。**必须用 `sendInputEvent` 而不是 `dispatchEvent`** ——
+ * Chromium 的整页缩放是在输入管线里处理的，渲染层合成的 KeyboardEvent 根本触发不到它，
+ * 那样测出来的「没缩放」是假的。
+ */
+async function smokeZoom(win: BrowserWindow): Promise<void> {
+  const press = async (keyCode: string, n: number): Promise<void> => {
+    for (let i = 0; i < n; i++) {
+      win.webContents.sendInputEvent({ type: "keyDown", keyCode, modifiers: ["control"] });
+      win.webContents.sendInputEvent({ type: "keyUp", keyCode, modifiers: ["control"] });
+      await wait(150);
+    }
+  };
+  const z = (): number => Math.round(win.webContents.getZoomFactor() * 100) / 100;
+
+  /** 终端实例上的真实字号 —— 不读我们自己的 state，那只能证明「存下了」。 */
+  const size = async (): Promise<number | null> =>
+    JSON.parse(
+      (await run(win, "JSON.stringify(window.__agentoryFontState?.() ?? {})")) as string,
+    ).termFontSize ?? null;
+
+  const before = await size();
+  say("smoke-zoom-start", `zoomFactor=${z()}  终端字号=${String(before)}`);
+  await press("-", 3);
+  const afterMinus = z();
+  const sizeMinus = await size();
+  say("smoke-zoom-minus", `Ctrl+- ×3 → zoomFactor=${afterMinus}  终端字号=${String(sizeMinus)}`);
+  await press("=", 3);
+  const afterPlus = z();
+  const sizePlus = await size();
+  say("smoke-zoom-plus", `Ctrl+= ×3 → zoomFactor=${afterPlus}  终端字号=${String(sizePlus)}`);
+
+  /**
+   * **减 3 再加 3 回到原点，这一条本身证明不了字号动过。** 所以要验中间值：
+   * 有终端时字号必须真的降下去再升回来；没终端时跳过（那不是失败）。
+   */
+  if (before !== null) {
+    check("zoom", sizeMinus === before - 3, `Ctrl+- ×3 之后终端字号是 ${String(sizeMinus)}，应为 ${before - 3}`);
+    check("zoom", sizePlus === before, `Ctrl+= ×3 之后终端字号是 ${String(sizePlus)}，应回到 ${before}`);
+  }
+
+  /**
+   * **整页缩放必须恒为 1。** 它把布局一起缩，而原生窗口控件（最小化/最大化/关闭）
+   * 不跟着缩 —— 用户截图里那对巨大的窗口按钮就是这么来的。
+   * 我们要的是「调字号」，不是「把网页缩小」。
+   */
+  check("zoom", afterMinus === 1, `Ctrl+- 把整页缩放改成了 ${afterMinus}`);
+  check("zoom", afterPlus === 1, `Ctrl+= 把整页缩放改成了 ${afterPlus}`);
+
+  // 本机探测到的等宽字体。下拉里只该出现真装了的 —— 选一个没装的会静默退回
+  const fonts = JSON.parse(
+    (await run(
+      win,
+      `JSON.stringify((window.__agentoryFontState?.().fonts ?? []).filter((f) => f.mono).map((f) => f.name))`,
+    )) as string,
+  ) as string[];
+  say("smoke-zoom-fonts", `本机 ${fonts.length} 个：${fonts.join(" | ")}`);
+  check("zoom", fonts.length > 0, "一个等宽字体都没探测到 —— 下拉会是空的");
+}
+
 /** 快捷键与右键菜单的点击路径。两者都没有单元测试能覆盖到接线这一层。 */
 async function smokeKeys(win: BrowserWindow): Promise<void> {
   say(
@@ -1170,6 +1230,7 @@ export function attachSmoke(win: BrowserWindow, quit: (code: number) => void): v
       if (env("CLEAN") === "1") await smokeClean(win, env("CLEAN_SHOTS") ?? null, check);
       if (env("DPAPI")) await smokeDpapi(win, env("DPAPI")!, check);
       if (env("KEYS") === "1") await smokeKeys(win);
+      if (env("ZOOM") === "1") await smokeZoom(win);
       if (env("HISTPERF") === "1") await smokeHistPerf(win);
       if (env("BELL") === "1") await smokeBell(win);
       if (env("END") === "1") {

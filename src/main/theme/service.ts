@@ -13,6 +13,14 @@ export interface ThemeState {
   systemPrefersDark: boolean;
   /** 被跳过的用户主题及原因。渲染层负责展示，不静默丢弃。 */
   warnings: string[];
+  /**
+   * 字号。**和主题走同一条 IPC** —— 它们都是「外观」，
+   * 为三个数字另开一套 state / 通道只会多出三处要同步的地方。
+   */
+  uiFontScale: number;
+  termFontSize: number;
+  /** `null` = 用内置的等宽字体栈。只影响终端，界面不给选（见 D-21）。 */
+  termFontFamily: string | null;
 }
 
 interface Settings {
@@ -36,7 +44,21 @@ interface Settings {
    * 但它得和别的设置存在一起 —— 一类记录一个文件。
    */
   trayHintShown: boolean;
+  /** 界面字号的倍数。CSS 里六个字号档全部乘它。 */
+  uiFontScale: number;
+  /** 终端字号，px。Ctrl+= / Ctrl+- / Ctrl+0 改的就是它。 */
+  termFontSize: number;
+  /** 终端字体。`null` = 内置栈。 */
+  termFontFamily: string | null;
 }
+
+/**
+ * 字号的合法范围。**必须夹住** —— 设置文件用户会手改，
+ * 一个 0 或者 400 会让界面直接不可用，而那时他连「设置」两个字都点不着。
+ */
+const UI_SCALE = { min: 0.8, max: 1.6, step: 0.1, def: 1 };
+const TERM_SIZE = { min: 8, max: 28, def: 13 };
+const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
 const DEFAULTS: Settings = {
   themeId: "graphite",
@@ -44,6 +66,9 @@ const DEFAULTS: Settings = {
   summariesEnabled: false,
   versionCheckEnabled: true,
   trayHintShown: false,
+  uiFontScale: UI_SCALE.def,
+  termFontSize: TERM_SIZE.def,
+  termFontFamily: null,
 };
 
 const settingsPath = (): string => join(app.getPath("userData"), "settings.json");
@@ -62,6 +87,18 @@ function readSettings(): Settings {
       // 默认开，所以只有显式写 false 才关
       versionCheckEnabled: raw.versionCheckEnabled !== false,
       trayHintShown: raw.trayHintShown === true,
+      // 手改坏了的数字不该让界面变得点不着 —— 非数字回默认，超范围夹住
+      uiFontScale:
+        typeof raw.uiFontScale === "number" && Number.isFinite(raw.uiFontScale)
+          ? clamp(raw.uiFontScale, UI_SCALE.min, UI_SCALE.max)
+          : UI_SCALE.def,
+      termFontSize:
+        typeof raw.termFontSize === "number" && Number.isFinite(raw.termFontSize)
+          ? Math.round(clamp(raw.termFontSize, TERM_SIZE.min, TERM_SIZE.max))
+          : TERM_SIZE.def,
+      termFontFamily: typeof raw.termFontFamily === "string" && raw.termFontFamily.trim() !== ""
+        ? raw.termFontFamily
+        : null,
     };
   } catch {
     // 没有设置文件、或文件坏了 —— 用默认值，不是错误
@@ -135,6 +172,9 @@ function buildState(): ThemeState {
     mode: settings.mode,
     systemPrefersDark: nativeTheme.shouldUseDarkColors,
     warnings: [...user.warnings, ...loaded.warnings],
+    uiFontScale: settings.uiFontScale,
+    termFontSize: settings.termFontSize,
+    termFontFamily: settings.termFontFamily,
   };
 }
 
@@ -148,6 +188,18 @@ export function registerThemeIpc(getWindow: () => BrowserWindow | null): void {
     if (typeof patch.themeId === "string") settings.themeId = patch.themeId;
     if (patch.mode === "system" || patch.mode === "light" || patch.mode === "dark") {
       settings.mode = patch.mode;
+    }
+    // 字号一律夹在合法范围里再落盘 —— 渲染层是可以被改的，主进程不该信它
+    if (typeof patch.uiFontScale === "number" && Number.isFinite(patch.uiFontScale)) {
+      settings.uiFontScale = clamp(patch.uiFontScale, UI_SCALE.min, UI_SCALE.max);
+    }
+    if (typeof patch.termFontSize === "number" && Number.isFinite(patch.termFontSize)) {
+      settings.termFontSize = Math.round(clamp(patch.termFontSize, TERM_SIZE.min, TERM_SIZE.max));
+    }
+    // 空串 = 回到内置栈。`in` 判断是为了区分「没传」和「传了 null」
+    if ("termFontFamily" in patch) {
+      const f = patch.termFontFamily;
+      settings.termFontFamily = typeof f === "string" && f.trim() !== "" ? f : null;
     }
     writeSettings(settings);
     const state = buildState();

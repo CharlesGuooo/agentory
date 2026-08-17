@@ -153,6 +153,40 @@
             <pre class="peek" id="sumPeekBox" hidden></pre>
           </section>
           <section class="field">
+            <label id="fontLabel">字号与字体</label>
+            <p class="desc">
+              <b>Ctrl+加号 / Ctrl+减号</b> 随时改终端字号，<b>Ctrl+0</b> 回默认 ——
+              和 Windows Terminal、VS Code 一致。
+            </p>
+            <div class="row">
+              <span class="desc fixed-label">界面</span>
+              <div class="seg" id="uiFontSeg" role="group" aria-labelledby="fontLabel">
+                <button type="button" data-uiscale="0.9">小</button>
+                <button type="button" data-uiscale="1">标准</button>
+                <button type="button" data-uiscale="1.15">大</button>
+                <button type="button" data-uiscale="1.3">特大</button>
+              </div>
+            </div>
+            <div class="row">
+              <span class="desc fixed-label">终端字号</span>
+              <button class="btn-ghost sm" id="termFontDown" type="button" aria-label="调小">−</button>
+              <span class="desc num" id="termFontNow">13</span>
+              <button class="btn-ghost sm" id="termFontUp" type="button" aria-label="调大">+</button>
+            </div>
+            <div class="row">
+              <span class="desc fixed-label">终端字体</span>
+              <select class="search" id="termFontFamily"></select>
+            </div>
+            <!--
+              为什么只给终端选字体、界面不给：界面用的是系统字体栈，换掉基本只能把布局
+              弄歪；而终端是你整天盯着读 agent 输出的地方。
+
+              下拉里**只列本机真装了的**（canvas 量宽度当场探测）—— 写死一串名字的话，
+              用户选了个没装的会静默退回下一个，界面上看起来像「选了但没生效」。
+            -->
+            <p class="desc" id="termFontNote"></p>
+          </section>
+          <section class="field">
             <label>Agent</label>
             <p class="desc">
               本机装了哪些 agent、各是什么版本。读版本是<b>纯文件读</b> ——
