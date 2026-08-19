@@ -99,13 +99,28 @@ void (async () => {
   check(myElectron.length > 0, `应用进程还活着：${myElectron.length} 个（托盘常驻）`);
   check(mine.length > 0, `agent 进程还在跑：${mine.length} 个 ${mine.map((p) => p.Name).join(",")}`);
 
-  // 收尾：真正退出，顺便验「退出之后零残留」
-  console.log("\n[tray] 现在真退出……");
+  /**
+   * 收尾。**这里不再断言「零残留」** —— 那条断言原来是错的。
+   *
+   * `kill()` 走的是 `Stop-Process -Force`，也就是 `TerminateProcess`：
+   * 被强杀的进程**没有任何机会跑代码**，`before-quit` / `will-quit` 都不会触发，
+   * 于是 `killAllSessions()` 根本没执行。断言它执行过，是在要求操作系统做不到的事。
+   * （表现为间歇性红：pty 主端关闭时子进程**多半**会跟着退，但那是竞态不是保证。）
+   *
+   * 它本来想验的那件事由 `verify-orphans.cjs` 覆盖，而且是**两条真实退出路径各一遍**
+   * （窗口全关、`app.quit()`）—— 那两条才会走 `will-quit`。
+   *
+   * **真正没被覆盖的**是「用户从任务管理器强杀 Agentory」。那种情况下会留下 agent 进程，
+   * 要兜住得把子进程放进 Job Object 并设 `KILL_ON_JOB_CLOSE`，让内核代劳。
+   * 记在这里，没做。
+   */
+  console.log("\n[tray] 收尾：强杀应用，并把它起的 agent 一起收干净……");
   for (const p of myElectron) kill(p.ProcessId);
   kill(child.pid);
   await sleep(6000);
-  const leaked = procs().filter((p) => isAgent(p) && !beforeIds.has(p.ProcessId));
-  check(leaked.length === 0, `退出后残留的 agent 进程：${leaked.length}`);
+  const left = procs().filter((p) => isAgent(p) && !beforeIds.has(p.ProcessId));
+  for (const p of left) kill(p.ProcessId);
+  console.log(`  强杀之后要自己收的 agent 进程：${left.length} 个（不算失败，见上面的注释）`);
   try {
     rmSync(ud, { recursive: true, force: true });
   } catch {
