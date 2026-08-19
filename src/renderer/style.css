@@ -170,6 +170,10 @@ body { display: grid; grid-template-rows: var(--titlebar-h) 1fr; }
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
   overflow: hidden; overflow-wrap: anywhere;
 }
+/* 点一下就地展开。省略号本身就是「还有更多」的信号，不另做溢出探测 ——
+   那得每次 paint 都强制一次布局，为一个光标形状不值。 */
+.sess .sum[data-expand] { cursor: pointer; }
+.sess .sum.expanded { -webkit-line-clamp: unset; }
 .sess .sum.none { opacity: 0.55; font-style: italic; }
 /* 会话 id = 身份。刻意不显眼：它用来确认"是哪一个"，不是用来读的。 */
 .sid { font-family: var(--mono); font-size: var(--t-xs); color: var(--c-dim); opacity: 0.8; }

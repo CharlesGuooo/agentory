@@ -11,8 +11,21 @@ import { headMessages, type SessionRef } from "./messages";
  * 产出 `"﻿Use brave web search to find out who won the"`（从句中切断，还带 BOM）。
  */
 
-/** 截断上限。窄侧栏折两行大约就是这个量。 */
-export const PREVIEW_MAX = 46;
+/**
+ * 截断上限。
+ *
+ * **不按盒子定。** 原来是 46，注释写的是「窄侧栏折两行大约就是这个量」——
+ * 那是**显示约束漏进了数据层**：CSS 已经在 clamp 了，这里再切一遍，切掉的就再也
+ * 长不回来，还会被 `workspace.json` 的 `label` 持久化下去。用户右键「复制摘要」
+ * 复制到的正是这个 46 字的半句话，而他以为是复制没复制全。
+ *
+ * 新的依据是数据本身：实测 283 条真摘要**最长 122 字**（中位数 46）。
+ * 上限要盖得住两个文本来源，两边行为才一致，160 是留了余量的那个数。
+ *
+ * 这条只管界面。给 DeepSeek 的载荷走 `payload.ts` 的
+ * `pickInformative(..., MSG_MAX_CHARS)`，那边是 500，本来就不受它影响。
+ */
+export const PREVIEW_MAX = 160;
 
 /**
  * 最多看几条候选。防止一个满是注入的开头把整个头部翻完。

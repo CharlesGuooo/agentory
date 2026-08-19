@@ -113,8 +113,30 @@ const stateText: Record<SessionView["state"], string> = {
   stopped: "已停",
 };
 
+/**
+ * 摘要那一行。默认被 CSS 砍成两行，点一下就地展开。
+ *
+ * **展开状态不能存在 DOM 里**：这两个渲染函数每次都重建 `innerHTML`，
+ * 也不能挂在 view 对象上 —— 收藏的 view 每次 `refreshFavorites()` 都是新造的。
+ * 所以由调用方拿一个按 key 存的集合传进来。
+ *
+ * `data-expand` 只给**真有内容**的那种。没有可读开头时展开是空动作，
+ * 那种情况下点它就该和点这一行的其它地方一样（启动/切过去）。
+ */
+const sumHtml = (key: string, label: string | null | undefined, expanded: ReadonlySet<string>): string => {
+  const text = label ?? NO_LABEL;
+  const cls = `sum${label ? "" : " none"}${expanded.has(key) ? " expanded" : ""}`;
+  const hook = label ? ` data-expand="${esc(key)}"` : "";
+  return `<span class="${cls}"${hook} title="${esc(text)}">${esc(text)}</span>`;
+};
+
 /** 顶栏标签页 + 侧栏工作集。两处都只渲染真实成员，不放占位数据。 */
-export function renderSessions(views: SessionView[], activeKey: string | null, c: ThemeColors): void {
+export function renderSessions(
+  views: SessionView[],
+  activeKey: string | null,
+  c: ThemeColors,
+  expanded: ReadonlySet<string>,
+): void {
   $("tabs").innerHTML = views
     .filter((v) => v.paneId !== null)
     .map(
@@ -158,7 +180,7 @@ export function renderSessions(views: SessionView[], activeKey: string | null, c
                 <span class="state">${v.needsAttention ? "需要你" : stateText[v.state]}</span>
                 <span class="end" data-end="${esc(v.key)}" title="结束会话：终止进程并移出工作集">✕</span>
               </span>
-              <span class="sum${v.label ? "" : " none"}" title="${esc(v.label ?? NO_LABEL)}">${esc(v.label ?? NO_LABEL)}</span>
+              ${sumHtml(v.key, v.label, expanded)}
               ${v.state === "notStarted" ? `<span class="cmd">${esc(v.command)}</span>` : ""}
             </button>`,
           )
@@ -176,7 +198,7 @@ export function renderSessions(views: SessionView[], activeKey: string | null, c
  * 与工作集正交：**收藏不等于在跑**，所以这里没有运行状态，只有「以后还要用这个」。
  * 空的时候整块隐藏 —— 一个永远空着的区块只是噪音。
  */
-export function renderFavorites(list: FavoriteView[]): void {
+export function renderFavorites(list: FavoriteView[], expanded: ReadonlySet<string>): void {
   $("favWrap").hidden = list.length === 0;
   $("favCount").textContent = String(list.length);
   // 清空要在隐藏之后照样执行 —— 早退会把最后一条的 DOM 留在里面，
@@ -194,7 +216,7 @@ export function renderFavorites(list: FavoriteView[]): void {
           <span class="folder">${esc(folderOf(v.cwd))}</span>
           <span class="end star" data-unfav="${esc(v.key)}" title="取消收藏">★</span>
         </span>
-        <span class="sum${v.label ? "" : " none"}" title="${esc(v.label ?? NO_LABEL)}">${esc(v.label ?? NO_LABEL)}</span>
+        ${sumHtml(v.key, v.label, expanded)}
       </button>`,
     )
     .join("");

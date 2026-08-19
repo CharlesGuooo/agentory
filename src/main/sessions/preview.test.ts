@@ -45,8 +45,24 @@ describe("挑出有信息量的那条", () => {
     const long = `请你${"很".repeat(200)}长`;
     const got = pickInformative([long]);
     expect(got).not.toBeNull();
-    expect(got!.length).toBeLessThanOrEqual(PREVIEW_MAX);
+    // 输入比上限长，所以结果**就该正好等于上限** —— `<=` 那种写法，
+    // 哪天截过头返回 5 个字它也照样绿
+    expect(got!.length).toBe(PREVIEW_MAX);
     expect(got).toBe(got!.trim());
+  });
+
+  /**
+   * 这条钉的是本刀改掉的那件事。
+   *
+   * 上限原来是 46，注释写的是「窄侧栏折两行大约就是这个量」—— 显示约束漏进了数据层。
+   * 用户右键「复制摘要」复制出来是一句半截话，而**全文根本不存在**。
+   * 下面这句 74 字的真实开头，在旧上限下会被切在「还是说他们已经」。
+   */
+  it("一句正常长度的开头不该被切 —— 旧上限 46 会把它切成半句", () => {
+    const real =
+      "看一下这里的.cursor里的harnes，是否可以完整移植给.cluade？还是说他们已经有一套等价的机制，不需要再搬一遍";
+    expect(real.length).toBeGreaterThan(46);
+    expect(pickInformative([real])).toBe(real);
   });
 
   it("分隔线之类的符号串不算信息 —— 实测有一条会话开头就是它", () => {

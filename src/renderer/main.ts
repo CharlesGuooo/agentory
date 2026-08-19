@@ -200,6 +200,41 @@ function applyFonts(): void {
   }
 }
 
+/**
+ * 摘要:一份缓存,**一个解析点**。
+ *
+ * 在模块作用域,因为 `paint()` 在模块作用域 —— 原来这三个放在启动守卫块里面,
+ * 渲染时够不到,于是工作集那行只能靠一次性 mutation 去追,而收藏和历史是实时查。
+ * 同一个会话在同一个侧栏显示两段不同的字,根因就是这个。
+ */
+const summaries = new Map<string, string>();
+const sumKey = (agent: string, id: string | null): string => `${agent}|${id ?? ""}`;
+const summaryOf = (agent: string, id: string | null): string | undefined =>
+  id === null ? undefined : summaries.get(sumKey(agent, id));
+
+/**
+ * 一行该显示哪段字。**所有读取点都必须走这里** ——
+ * 渲染、右键「复制摘要」、加收藏时存下来的那份,三处只要有一处直接读 `label`,
+ * 用户就会看到一段、复制到另一段。
+ *
+ * 持久化的 `label` 保留作兜底:工作集是同步加载的,摘要是异步的,
+ * 没有它侧栏会先空一拍。**它是即时占位,不是真相。**
+ */
+const labelOfView = (v: {
+  agent: string;
+  sessionId: string | null;
+  label?: string | null;
+}): string | null => summaryOf(v.agent, v.sessionId) ?? v.label ?? null;
+
+/**
+ * 哪几行的摘要是展开着的。按行的 key 存。
+ *
+ * 不能存在 DOM 上（两个渲染函数每次都重建 `innerHTML`），也不能挂在 view 上
+ * （收藏的 view 每次刷新都是新造的）。工作集和收藏共用一个集合 —— 两边的 key
+ * 都是 `agent|sessionId`，同一个会话在两处展开是同一件事。
+ */
+const expanded = new Set<string>();
+
 function paint(): void {
   if (!theme) return;
   const t = theme.themes.find((x) => x.id === theme!.themeId) ?? theme.themes[0];
@@ -214,7 +249,13 @@ function paint(): void {
   root.dataset["variant"] = variant;
   agentory?.setWindowOverlay(colors.chrome, colors.dim);
 
-  renderSessions(views, activeKey, colors);
+  // 渲染前解析摘要 —— 界面上显示的和右键复制到的必须是同一份（见 `labelOfView`）
+  renderSessions(
+    views.map((v) => ({ ...v, label: labelOfView(v) })),
+    activeKey,
+    colors,
+    expanded,
+  );
   // 一个终端都没有时才显示空态。有会话在跑还挂着"还没有会话在跑"是在撒谎。
   $("termEmpty").hidden = panes.size > 0;
   renderThemeCards(theme.themes, t.id, variant, theme.warnings);
@@ -434,9 +475,10 @@ if (!agentory) {
         agent: f.agent,
         sessionId: f.sessionId,
         cwd: f.cwd,
-        label: summaryOf(f.agent, f.sessionId) ?? f.label ?? null,
+        label: labelOfView(f),
         dead: favMissing.has(favoriteKey(f)),
       })),
+      expanded,
     );
   }
 
@@ -812,8 +854,27 @@ if (!agentory) {
     const k = (e.target as HTMLElement).closest<HTMLElement>(".tab")?.dataset["key"];
     if (k) show(k);
   });
+  /**
+   * 点摘要 = 就地展开/收起，**绝不是启动会话**。
+   *
+   * `.sess` 整行是一个 `<button>`，`.sum` 在它里面 —— 不 `stopPropagation` 就会掉进
+   * 下面那句 `activate(k)`。改之前实测过：点一下摘要，pty 从 0 变成 1、
+   * 标签页从 0 变成 1。**「想读一眼摘要，起了一个 agent 进程」。**
+   */
+  const toggleExpand = (key: string): void => {
+    if (!expanded.delete(key)) expanded.add(key);
+    paint();
+    refreshFavorites();
+  };
+
   $("tree").addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
+    const expKey = t.dataset["expand"];
+    if (expKey !== undefined) {
+      e.stopPropagation();
+      toggleExpand(expKey);
+      return;
+    }
     const endKey = t.dataset["end"];
     if (endKey) {
       e.stopPropagation();
@@ -867,16 +928,17 @@ if (!agentory) {
   // ---------- 摘要（D-7 第 1 层）----------
   /**
    * 摘要是 `labelOf` 优先级链的第一位：摘要 ?? agent 自带标题 ?? 开头那句。
-   * 界面代码不用改 —— 链早就写好了，这里只是把第一位填上。
+   *
+   * 这里只负责**把缓存填上**，谁该显示哪段字由 `labelOfView` 在渲染时决定。
+   * （原来这句注释写的是「界面代码不用改，链早就写好了」—— 那已经不成立了：
+   * 当时是靠一次性 mutation 把摘要塞进 `v.label`，那正是同一个会话在侧栏
+   * 显示两段字的根因。）
    */
-  const summaries = new Map<string, string>();
-  const sumKey = (agent: string, id: string | null): string => `${agent}|${id ?? ""}`;
-  const summaryOf = (agent: string, id: string | null): string | undefined =>
-    id === null ? undefined : summaries.get(sumKey(agent, id));
-
   async function refreshSummaries(): Promise<void> {
     for (const s of await api.summaryAll()) summaries.set(sumKey(s.agent, s.sessionId), s.text);
-    for (const v of views) v.label = summaryOf(v.agent, v.sessionId) ?? v.label;
+    // 这里原来还有一行 `for (const v of views) v.label = …` —— **删掉了**。
+    // 那是一次性 mutation，只覆盖那一刻已存在的 view；之后 `viewFromEntry` 造出来的
+    // （恢复、更新后重启、从收藏拉进来）永远等不到摘要。现在渲染时统一走 `labelOfView`。
     paint();
     refreshFavorites();
     if (historyOpen()) refreshHistory();
@@ -1179,6 +1241,13 @@ if (!agentory) {
     if (v.paneId === null) items.push({ label: "启动", run: () => activate(v.key) });
     else items.push({ label: "切到这个会话", run: () => show(v.key) });
 
+    /**
+     * 这一行现在显示的是哪段字。**加收藏和「复制摘要」都用它** ——
+     * 原来这两处各自直接读 `v.label`（加入工作集时持久化的快照），
+     * 于是用户看到一段、复制到另一段，收藏里又存下第三份。
+     */
+    const sum = labelOfView(v);
+
     if (v.sessionId !== null) {
       items.push({
         label: starred ? "取消收藏" : "收藏",
@@ -1197,7 +1266,7 @@ if (!agentory) {
                 agent: v.agent as AgentId,
                 sessionId: v.sessionId!,
                 cwd: v.cwd,
-                ...(v.label ? { label: v.label } : {}),
+                ...(sum === null ? {} : { label: sum }),
                 addedAt: new Date().toISOString(),
               })
               .then((r) => {
@@ -1209,11 +1278,14 @@ if (!agentory) {
       });
     }
     /**
-     * 摘要在列表里被 `-webkit-line-clamp: 2` 砍着（历史那边更窄，是单行 ellipsis），
-     * 悬停能看全，但**要把它拿走只能靠这一项**。
-     * `v.label` 为空时不给这一项 —— 一个复制出「（没有可读的开头）」的菜单项是噪音。
+     * 摘要在侧栏被 `-webkit-line-clamp: 2` 砍着（点一下能就地展开），
+     * 这一项是把它**拿走**的路径。
+     *
+     * **必须走 `labelOfView`。** 原来直接读 `v.label`，那是加入工作集时持久化的快照 ——
+     * 用户复制出来的是一句半截话，而界面上显示的又是另一段字。
+     * 空的时候不给这一项 —— 一个复制出「（没有可读的开头）」的菜单项是噪音。
      */
-    if (v.label) items.push({ label: "复制摘要", run: () => api.copy(v.label!) });
+    if (sum !== null) items.push({ label: "复制摘要", run: () => api.copy(sum) });
     items.push({ label: "在资源管理器中打开", run: () => void api.openFolder(v.cwd) });
     items.push({ label: "复制工作目录", run: () => api.copy(v.cwd) });
     if (v.sessionId !== null) {
@@ -1528,6 +1600,14 @@ if (!agentory) {
   // ---------- 收藏区块的点击 ----------
   $("favTree").addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
+
+    // 和工作集那边同一条：点摘要是展开，不是把这条收藏恢复成会话
+    const expKey = t.dataset["expand"];
+    if (expKey !== undefined) {
+      e.stopPropagation();
+      toggleExpand(expKey);
+      return;
+    }
 
     const unfav = t.closest<HTMLElement>("[data-unfav]")?.dataset["unfav"];
     if (unfav !== undefined) {

@@ -54,6 +54,18 @@ export interface SummaryErr {
 }
 export type SummaryResult = SummaryOk | SummaryErr;
 
+/**
+ * 输出上限。**是上限，不是目标。**
+ *
+ * 原来是 120，配上下面那条「撞到上限就整条不采用」，会把长摘要从「显示半句话」
+ * 变成「什么都不显示」—— 缓存里实测最长的一条是 122 字，中文大致 1 字 1 token，
+ * 那种长度正好撞得上。用不到的 token 不花钱，所以放宽。
+ *
+ * `finish_reason` 那条检查保留：它防的是真截断，没错，错的是上限定得太紧。
+ * 报错文案也引这个常量 —— 写死数字的话，改了上限它就开始撒谎。
+ */
+const MAX_TOKENS = 200;
+
 interface ChatResponse {
   /** `finish_reason === "length"` = 撞到 max_tokens 被截断，那种半句话不能采用 */
   choices?: { message?: { content?: string }; finish_reason?: string }[];
@@ -76,7 +88,7 @@ async function once(payload: string, key: string, timeoutMs: number): Promise<Su
         ],
         // 默认是开着的。摘要不需要思考，开着只是多花输出 token。
         thinking: { type: "disabled" },
-        max_tokens: 120,
+        max_tokens: MAX_TOKENS,
         temperature: 0.2,
       }),
       signal: ctl.signal,
@@ -97,7 +109,7 @@ async function once(payload: string, key: string, timeoutMs: number): Promise<Su
      * 当成失败返回，下次还有机会重来。
      */
     if (body.choices?.[0]?.finish_reason === "length") {
-      return { ok: false, error: `模型写超了 ${String(120)} token 被截断，这次不采用` };
+      return { ok: false, error: `模型写超了 ${String(MAX_TOKENS)} token 被截断，这次不采用` };
     }
     return {
       ok: true,

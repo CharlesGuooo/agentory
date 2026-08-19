@@ -1174,6 +1174,235 @@ async function smokeUpdate(win: BrowserWindow, agent: string): Promise<void> {
   check("update", !after.includes('"还有更新按钮":true'), `版本没变，更新按钮还在：${after}`);
 }
 
+/**
+ * `SUMEXPAND=1`：摘要能不能在应用里读全，以及读到的是不是同一份。
+ *
+ * 三件事一次验完，它们是同一个故事的三个根因：
+ *
+ * 1. **同一个会话在侧栏只能有一段字。** 工作集那行曾经走「加入时持久化的快照 +
+ *    启动时一次性覆盖」，而收藏和历史是每次渲染实时查 —— 于是同一个 session id
+ *    在同一个侧栏里显示两段不同的文本。
+ * 2. **右键「复制摘要」复制的必须是界面上那一份。** 它曾经读的是那个陈旧快照，
+ *    用户复制出来是半句话。
+ * 3. **点摘要展开，且绝不能把会话启起来。** `.sess` 整行是个 button，
+ *    `.sum` 在它里面 —— 漏了 `stopPropagation` 就变成「每想读一次摘要就起一个 agent 进程」。
+ *
+ * ⚠️ 展开那一下**必须用 `sendInputEvent`**。这个文件里已经栽过两次：
+ * 缩放（整页缩放在输入管线里处理）和右键菜单（元素脱离文档后合成事件照样触发委托）。
+ * `dispatchEvent` 复现不了真实鼠标。
+ */
+async function smokeSumExpand(win: BrowserWindow): Promise<void> {
+  const dump = async (): Promise<{
+    工作集: { key: string; sid: string; 文本: string }[];
+    收藏: { key: string; sid: string; 文本: string }[];
+    标签页: number;
+  }> =>
+    JSON.parse(
+      (await run(
+        win,
+        `(() => {
+          const rows = (sel, attr) => [...document.querySelectorAll(sel)].map((r) => ({
+            key: r.dataset[attr],
+            sid: r.querySelector(".sid")?.textContent ?? "",
+            文本: r.querySelector(".sum")?.textContent ?? "",
+          }));
+          return JSON.stringify({
+            工作集: rows("#tree .sess", "key"),
+            收藏: rows("#favTree .sess", "fav"),
+            标签页: document.querySelectorAll("#tabs .tab").length,
+          });
+        })()`,
+      )) as string,
+    ) as never;
+
+  const d = await dump();
+  say("smoke-sum-rows", JSON.stringify(d));
+
+  // ① 同一个 session 在两处的文本必须一致
+  const pairs = d.工作集
+    .map((w) => ({ w, f: d.收藏.find((x) => x.sid === w.sid && x.sid !== "") }))
+    .filter((p) => p.f !== undefined);
+  if (pairs.length === 0) {
+    say("smoke-sum-same", "工作集和收藏没有同一个会话，跳过「两处一致」这条");
+  } else {
+    for (const { w, f } of pairs) {
+      say("smoke-sum-same", JSON.stringify({ sid: w.sid, 工作集: w.文本, 收藏: f!.文本 }));
+      check(
+        "sumexpand",
+        w.文本 === f!.文本,
+        `同一个会话 ${w.sid} 在侧栏有两段字：工作集「${w.文本}」/ 收藏「${f!.文本}」`,
+      );
+    }
+  }
+
+  const first = d.工作集[0];
+  if (!first) {
+    check("sumexpand", false, "侧栏一行都没有，验不了");
+    return;
+  }
+
+  // ② 右键「复制摘要」复制的必须是界面上显示的那一份
+  const menuAt = JSON.parse(
+    (await run(
+      win,
+      `(async () => {
+        const row = document.querySelector("#tree .sess");
+        await navigator.clipboard.writeText("__哨兵__").catch(() => {});
+        row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 120, clientY: 200 }));
+        const btn = [...document.querySelectorAll(".ctx-item")].find((b) => b.textContent.includes("复制摘要"));
+        if (!btn) return JSON.stringify({ err: "菜单里没有「复制摘要」" });
+        const r = btn.getBoundingClientRect();
+        return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) });
+      })()`,
+    )) as string,
+  ) as { x?: number; y?: number; err?: string };
+
+  if (menuAt.err !== undefined) {
+    check("sumexpand", false, menuAt.err);
+  } else {
+    const at = { x: menuAt.x!, y: menuAt.y!, button: "left" as const, clickCount: 1 };
+    win.webContents.sendInputEvent({ type: "mouseDown", ...at });
+    win.webContents.sendInputEvent({ type: "mouseUp", ...at });
+    await wait(500);
+    const copied = String(
+      await run(win, `navigator.clipboard.readText().catch(() => "(读不到)")`),
+    );
+    say(
+      "smoke-sum-copy",
+      JSON.stringify({ 剪贴板长度: copied.length, 界面长度: first.文本.length, 剪贴板: copied }),
+    );
+    check("sumexpand", copied !== "__哨兵__", "点了「复制摘要」剪贴板没变");
+    check(
+      "sumexpand",
+      copied === first.文本,
+      `复制到的和界面显示的不是同一份：剪贴板 ${copied.length} 字「${copied}」，界面 ${first.文本.length} 字「${first.文本}」`,
+    );
+  }
+
+  // ③ 真鼠标点摘要 → 展开，且不许启动会话
+  const pidsBefore = livePids().length;
+  const box = JSON.parse(
+    (await run(
+      win,
+      `(() => {
+        const el = document.querySelector("#tree .sess .sum");
+        if (!el) return JSON.stringify({ err: "没有 .sum" });
+        const r = el.getBoundingClientRect();
+        return JSON.stringify({
+          x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2),
+          clientH: el.clientHeight, scrollH: el.scrollHeight, 展开着: el.classList.contains("expanded"),
+        });
+      })()`,
+    )) as string,
+  ) as { x?: number; y?: number; clientH?: number; scrollH?: number; 展开着?: boolean; err?: string };
+
+  if (box.err !== undefined) {
+    check("sumexpand", false, box.err);
+    return;
+  }
+  say("smoke-sum-before", JSON.stringify(box));
+  // `SUMEXPAND_SHOTS=<目录>`：收起态和展开态各一张。这一刀改的是**看得见的东西**，
+  // 而冒烟读的是 class 和 scrollHeight —— 那两个绿了不等于人眼看着是对的
+  const shots = env("SUMEXPAND_SHOTS");
+  if (shots !== undefined) {
+    mkdirSync(shots, { recursive: true }); // `shoot()` 不自己建目录
+    await shoot(win, shots, "摘要-收起");
+  }
+
+  const hit = { x: box.x!, y: box.y!, button: "left" as const, clickCount: 1 };
+  win.webContents.sendInputEvent({ type: "mouseDown", ...hit });
+  win.webContents.sendInputEvent({ type: "mouseUp", ...hit });
+  await wait(600);
+
+  const after = JSON.parse(
+    (await run(
+      win,
+      `(() => {
+        const el = document.querySelector("#tree .sess .sum");
+        const key = el.dataset.expand;
+        const twin = document.querySelector('#favTree [data-expand="' + CSS.escape(key) + '"]');
+        return JSON.stringify({
+          展开着: el.classList.contains("expanded"),
+          clientH: el.clientHeight, scrollH: el.scrollHeight,
+          标签页: document.querySelectorAll("#tabs .tab").length,
+          收藏里同一条: twin === null ? "没有" : String(twin.classList.contains("expanded")),
+        });
+      })()`,
+    )) as string,
+  ) as { 展开着: boolean; clientH: number; scrollH: number; 标签页: number; 收藏里同一条: string };
+  const pidsAfter = livePids().length;
+  say("smoke-sum-after", JSON.stringify({ ...after, pty前: pidsBefore, pty后: pidsAfter }));
+  if (shots !== undefined) await shoot(win, shots, "摘要-展开");
+
+  check("sumexpand", after.展开着, "真鼠标点了 .sum，没有拿到 expanded 类");
+  check(
+    "sumexpand",
+    after.clientH >= after.scrollH,
+    `展开之后还是被截着：clientHeight=${after.clientH} < scrollHeight=${after.scrollH}`,
+  );
+  // 这两条是 stopPropagation 的守卫。漏了就是「想读一眼摘要，起了一个 agent 进程」
+  check("sumexpand", pidsAfter === pidsBefore, `点摘要把会话启起来了：pty ${pidsBefore} → ${pidsAfter}`);
+  check("sumexpand", after.标签页 === d.标签页, `点摘要多开了标签页：${d.标签页} → ${after.标签页}`);
+  // 展开状态按 `agent|sessionId` 存，工作集和收藏共用一个集合 —— 同一个会话在两处
+  // 是同一件事。**断言它**，不能只打印：只 say 不 check 的字段钉不住任何东西
+  if (after.收藏里同一条 !== "没有") {
+    check("sumexpand", after.收藏里同一条 === "true", "工作集展开了，收藏里同一个会话没跟着展开");
+  }
+
+  // ④ 再点一次收起 —— 只展不收就是个单向门
+  win.webContents.sendInputEvent({ type: "mouseDown", ...hit });
+  win.webContents.sendInputEvent({ type: "mouseUp", ...hit });
+  await wait(600);
+  const back = String(
+    await run(win, `String(document.querySelector("#tree .sess .sum").classList.contains("expanded"))`),
+  );
+  say("smoke-sum-collapse", `再点一次 → 展开着=${back}`);
+  check("sumexpand", back === "false", "再点一次没有收起来");
+
+  /**
+   * ⑤ 收藏那一侧是**另一个 click 委托**，得单独点一次。
+   * 两处的接线是分开写的，只验一处就等于放着另一处不管 ——
+   * 这个文件里所有的坑都长在「没测到的那一处接线」上。
+   */
+  const favAt = JSON.parse(
+    (await run(
+      win,
+      `(() => {
+        const el = document.querySelector("#favTree .sess .sum[data-expand]");
+        if (!el) return JSON.stringify({ err: "收藏区没有可展开的摘要" });
+        const r = el.getBoundingClientRect();
+        return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) });
+      })()`,
+    )) as string,
+  ) as { x?: number; y?: number; err?: string };
+
+  if (favAt.err !== undefined) {
+    say("smoke-sum-fav", favAt.err);
+    return;
+  }
+  const favPids = livePids().length;
+  const favHit = { x: favAt.x!, y: favAt.y!, button: "left" as const, clickCount: 1 };
+  win.webContents.sendInputEvent({ type: "mouseDown", ...favHit });
+  win.webContents.sendInputEvent({ type: "mouseUp", ...favHit });
+  await wait(600);
+  const favAfter = JSON.parse(
+    (await run(
+      win,
+      `(() => {
+        const el = document.querySelector("#favTree .sess .sum[data-expand]");
+        return JSON.stringify({
+          展开着: el.classList.contains("expanded"),
+          标签页: document.querySelectorAll("#tabs .tab").length,
+        });
+      })()`,
+    )) as string,
+  ) as { 展开着: boolean; 标签页: number };
+  say("smoke-sum-fav", JSON.stringify({ ...favAfter, pty前: favPids, pty后: livePids().length }));
+  check("sumexpand", favAfter.展开着, "点收藏里的摘要没有展开");
+  check("sumexpand", livePids().length === favPids, "点收藏里的摘要把会话恢复起来了");
+  check("sumexpand", favAfter.标签页 === d.标签页, "点收藏里的摘要多开了标签页");
+}
+
 /** 快捷键与右键菜单的点击路径。两者都没有单元测试能覆盖到接线这一层。 */
 async function smokeKeys(win: BrowserWindow): Promise<void> {
   say(
@@ -1387,6 +1616,7 @@ export function attachSmoke(win: BrowserWindow, quit: (code: number) => void): v
       if (env("KEYS") === "1") await smokeKeys(win);
       if (env("ZOOM")) await smokeZoom(win);
       if (env("UPDATE")) await smokeUpdate(win, env("UPDATE")!);
+      if (env("SUMEXPAND") === "1") await smokeSumExpand(win);
       if (env("HISTPERF") === "1") await smokeHistPerf(win);
       if (env("BELL") === "1") await smokeBell(win);
       if (env("END") === "1") {

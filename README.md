@@ -52,9 +52,9 @@ The tray icon opens the window again; **quitting is a separate, explicit choice*
 tray's right-click menu, and it is the only thing that ends the sessions.
 
 **Summarises each session.** One sentence saying what the session was about, so you can
-tell two `a3f9c1e2` apart. The sidebar shows about two lines of it; hover for the whole
-thing, or right-click the session to copy it. This is **off by default and needs your own
-DeepSeek API key** —
+tell two `a3f9c1e2` apart. The sidebar clamps it to two lines — click the summary to expand
+it in place, or right-click the session to copy it. Clicking the summary never starts the
+session. This is **off by default and needs your own DeepSeek API key** —
 it is the only feature that sends **your content** anywhere, so it is a deliberate,
 separate switch. Before you enable it, the settings panel will show you the **exact text
 that would be sent** for one of your own sessions.
