@@ -892,6 +892,23 @@ async function smokeShots(win: BrowserWindow, dir: string): Promise<void> {
   await run(win, 'document.getElementById("hxClose").click()');
   await wait(300);
   await wait(400);
+  /**
+   * 右键菜单。**这一张是补的** —— 这个组件刚一次性暴露了两个问题：
+   * 鼠标点不动（从第一天起），以及「危险」项用 `--c-dim` 表达、看起来像禁用。
+   * 后者只有看图才发现得了。
+   */
+  await run(
+    win,
+    `(() => {
+      const row = document.querySelector("#tree .sess");
+      if (row) row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 150, clientY: 240 }));
+    })()`,
+  );
+  await wait(500);
+  await shoot(win, dir, "10-右键菜单");
+  await run(win, 'document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))');
+  await wait(300);
+
   await run(win, 'document.getElementById("btnNew").click()');
   await wait(2000);
   await shoot(win, dir, "04-新建会话");
@@ -1136,6 +1153,60 @@ async function smokeKeys(win: BrowserWindow): Promise<void> {
       })()`,
     ),
   );
+
+  /**
+   * **真的点一项，并断言副作用发生了。**
+   *
+   * 上面那一段只验「菜单出现 → 列出条目 → Esc 关掉」——
+   * 而这个文件的注释写着它验的是「右键菜单的**点击路径**」，那句话是假的。
+   * 恰恰是缺的这一步让一个**从第一天就存在**的 bug 活了一周：
+   * `menu.ts` 在 window 的捕获阶段无条件 `pointerdown → closeMenu()`，
+   * 按钮在 click 派发之前就被移出 DOM，于是**所有菜单项用鼠标点都没反应**。
+   *
+   * 拿「复制工作目录」当探针：它的副作用可以从渲染层读回来（剪贴板），
+   * 而且不改变任何状态 —— 不像「结束会话」那样跑一次就把环境弄没了。
+   */
+  /**
+   * ⚠️ **必须用 `sendInputEvent`，不能用 `dispatchEvent`。**
+   *
+   * 第一版用了合成 DOM 事件，结果**测不出这个 bug**：`pointerdown` 把菜单从
+   * document 里摘走之后，按钮仍然是 box 的子节点（只是脱离了文档），
+   * 于是挂在 box 上的委托照样触发 —— 而**真实鼠标不会这样**，元素没了
+   * 浏览器根本不会给它派发 click。合成事件复现不了输入管线的行为。
+   * （缩放那一刀刚栽过同一个跟头。）
+   */
+  const rect = JSON.parse(
+    (await run(
+      win,
+      `(async () => {
+        const row = document.querySelector("#tree .sess");
+        if (!row) return JSON.stringify({ err: "侧栏没有行" });
+        await navigator.clipboard.writeText("__哨兵__").catch(() => {});
+        row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 120, clientY: 200 }));
+        const btn = [...document.querySelectorAll(".ctx-item")].find((b) => b.textContent.includes("复制工作目录"));
+        if (!btn) return JSON.stringify({ err: "菜单里没有「复制工作目录」" });
+        const r = btn.getBoundingClientRect();
+        return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) });
+      })()`,
+    )) as string,
+  ) as { x?: number; y?: number; err?: string };
+
+  if (rect.err) {
+    check("ctx", false, rect.err);
+  } else {
+    const at = { x: rect.x!, y: rect.y!, button: "left" as const, clickCount: 1 };
+    win.webContents.sendInputEvent({ type: "mouseDown", ...at });
+    win.webContents.sendInputEvent({ type: "mouseUp", ...at });
+    await wait(500);
+    const after = String(
+      await run(
+        win,
+        `navigator.clipboard.readText().then((t) => JSON.stringify({ 剪贴板: t, 菜单已关: !document.querySelector(".ctx") })).catch(() => '{"剪贴板":"(读不到)"}')`,
+      ),
+    );
+    say("smoke-ctx-click", `在 (${rect.x!}, ${rect.y!}) 真点了一下 → ${after}`);
+    check("ctx", !after.includes("__哨兵__"), `鼠标点「复制工作目录」之后剪贴板没变：${after}`);
+  }
 }
 
 /** 摘要设置：开关 → 状态 → 「看看会发送什么」渲染出真实载荷。 */

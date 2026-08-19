@@ -150,7 +150,7 @@ export function renderSessions(views: SessionView[], activeKey: string | null, c
                 <span class="state">${v.needsAttention ? "需要你" : stateText[v.state]}</span>
                 <span class="end" data-end="${esc(v.key)}" title="结束会话：终止进程并移出工作集">✕</span>
               </span>
-              <span class="sum${v.label ? "" : " none"}">${esc(v.label ?? NO_LABEL)}</span>
+              <span class="sum${v.label ? "" : " none"}" title="${esc(v.label ?? NO_LABEL)}">${esc(v.label ?? NO_LABEL)}</span>
               ${v.state === "notStarted" ? `<span class="cmd">${esc(v.command)}</span>` : ""}
             </button>`,
           )
@@ -185,7 +185,7 @@ export function renderFavorites(list: FavoriteView[]): void {
           <span class="folder">${esc(folderOf(v.cwd))}</span>
           <span class="end star" data-unfav="${esc(v.key)}" title="取消收藏">★</span>
         </span>
-        <span class="sum${v.label ? "" : " none"}">${esc(v.label ?? NO_LABEL)}</span>
+        <span class="sum${v.label ? "" : " none"}" title="${esc(v.label ?? NO_LABEL)}">${esc(v.label ?? NO_LABEL)}</span>
       </button>`,
     )
     .join("");
@@ -317,7 +317,7 @@ export function renderHistory(list: HistoryRow[], total: number, shown: number):
           <span class="ag">${r.agent}</span>
           <span class="mid">
             <span class="cwd" title="${r.cwdFull}">${r.cwd}</span>
-            <span class="lbl${r.label ? "" : " none"}"
+            <span class="lbl${r.label ? "" : " none"}" title="${esc(r.label ?? NO_LABEL)}"
               ><span class="sid">${r.sid}</span>${esc(r.label ?? NO_LABEL)}</span>
           </span>
           <span class="when">${r.when}${r.inexact ? ' <span class="flag">≈</span>' : ""}</span>

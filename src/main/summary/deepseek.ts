@@ -22,7 +22,18 @@ export const PRICE = { in: 0.14, out: 0.28, checkedAt: "2026-08-15" };
 const SYSTEM = [
   "你在为一个开发者工具生成会话摘要。",
   "输入是一次 AI 编程会话的开头与结尾片段。",
-  "用一句话说明这次会话在做什么，30 到 50 个字，不要标点结尾，不要引号，不要「本次会话」这类开场白。",
+  /**
+   * **20 到 30 个字，不是 30 到 50。**
+   *
+   * 侧栏那一栏文本宽 200px、字号 11.5px、折两行 —— 实测放得下约 32–34 个中文字。
+   * 原来的规格是 30–50，**比容器上限多出将近 50%**：模型只要写超过 34 个字
+   * 就必然被 `-webkit-line-clamp: 2` 砍掉，用户看到的永远是半句话。
+   * 而历史列表更窄（单行，前面还占着 6 位 session id）。
+   *
+   * 这不是「让模型少说点」，是让规格和容器对上 —— 摘要的用处是**扫一眼认出是哪条**，
+   * 一句被砍一半的话在这件事上是零价值的。
+   */
+  "用一句话说明这次会话在做什么，20 到 30 个字，不要标点结尾，不要引号，不要「本次会话」这类开场白。",
   "直接说事情本身，例如「把装机清单从双卡改成单卡并重算总价」。",
   "如果片段里看不出在做什么，就如实说看不出，不要编。",
 ].join("\n");
@@ -44,7 +55,8 @@ export interface SummaryErr {
 export type SummaryResult = SummaryOk | SummaryErr;
 
 interface ChatResponse {
-  choices?: { message?: { content?: string } }[];
+  /** `finish_reason === "length"` = 撞到 max_tokens 被截断，那种半句话不能采用 */
+  choices?: { message?: { content?: string }; finish_reason?: string }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number };
   error?: { message?: string };
 }
@@ -77,6 +89,16 @@ async function once(payload: string, key: string, timeoutMs: number): Promise<Su
     }
     const text = body.choices?.[0]?.message?.content?.trim();
     if (!text) return { ok: false, error: "模型没有返回内容" };
+    /**
+     * **撞到 `max_tokens` 的半句话不能当成功。**
+     *
+     * 缓存有 `sourceLastActivity` 守着不会重摘 —— 一旦一句被截断的话写进去，
+     * 它就是**永久的**，而且看起来和正常摘要没有区别。
+     * 当成失败返回，下次还有机会重来。
+     */
+    if (body.choices?.[0]?.finish_reason === "length") {
+      return { ok: false, error: `模型写超了 ${String(120)} token 被截断，这次不采用` };
+    }
     return {
       ok: true,
       text,

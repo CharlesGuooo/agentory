@@ -75,9 +75,27 @@ export function showMenu(x: number, y: number, items: MenuItem[]): void {
     }
   });
 
-  // 点别处关，滚动也关 —— 菜单不跟着内容走，一滚就会飘到不相干的地方。
-  // 刻意只有这两条：resize / blur 那些是想出来的场景，不是撞见的。
-  const off = (): void => closeMenu();
+  /**
+   * 点**别处**关，滚动也关 —— 菜单不跟着内容走，一滚就会飘到不相干的地方。
+   * 刻意只有这两条：resize / blur 那些是想出来的场景，不是撞见的。
+   *
+   * ⚠️ **「别处」这个判断不能省。**
+   *
+   * 这里原本是无条件 `closeMenu()`，而它挂在 window 的**捕获阶段**。
+   * 鼠标点击的顺序是 `pointerdown → … → click`，所以点菜单项时：
+   * pointerdown 先在捕获阶段命中它 → 菜单连同那个按钮被移出 DOM →
+   * 等 click 该派发时按钮已经不在文档里 → 55 行那个委托**永远不执行**。
+   *
+   * 净效果：菜单一点就消失，什么都不发生 —— 和「全是占位」的观感一模一样。
+   * 两套菜单的**全部**菜单项一起被打死，而且是从这个文件诞生那天起。
+   *
+   * 键盘路径不经过 pointerdown，所以那条一直是好的（右键 → ↓ → Enter 能用）。
+   * 这个不对称正是当初的判定证据。
+   */
+  const off = (e: Event): void => {
+    if (el && e.target instanceof Node && el.contains(e.target)) return;
+    closeMenu();
+  };
   addEventListener("pointerdown", off, { capture: true });
   document.addEventListener("scroll", off, { capture: true });
   cleanup = () => {

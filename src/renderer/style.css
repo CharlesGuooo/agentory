@@ -510,8 +510,17 @@ body { display: grid; grid-template-rows: var(--titlebar-h) 1fr; }
   background: none; color: var(--c-fg); cursor: pointer;
 }
 .ctx-item:hover, .ctx-item:focus-visible { background: var(--c-sel); outline: 0; }
-.ctx-item.danger { color: var(--c-dim); }
-.ctx-item.danger:hover, .ctx-item.danger:focus-visible { color: var(--c-fg); }
+/*
+  破坏性动作。**原来是 `--c-dim`，那是反的** —— `--c-dim` 是全站表示「次要/弱化」的灰，
+  而在所有主流 UI 里灰 = 禁用。用户看到「取消收藏」是灰的，第一反应是它点不了
+  （实测就是这么被误判的）。危险不等于弱化：它该更显眼，不是更不显眼。
+
+  用一条分隔线把它和上面的常规动作隔开，颜色保持正常 —— 主题里没有专门的警示色
+  （八个色键：bg/chrome/line/fg/dim/cursor/accent/sel），而拿 accent 表示危险
+  会和「有更新」「需要你」那套注意力语言撞车。悬停时才染成 accent。
+*/
+.ctx-item.danger { color: var(--c-fg); border-top: 1px solid var(--c-line); margin-top: 4px; padding-top: 8px; }
+.ctx-item.danger:hover, .ctx-item.danger:focus-visible { color: var(--c-accent); }
 
 /* 「看看会发送什么」的展开框。等宽字体 —— 这里展示的是要发出去的原文，
    任何美化都会让人怀疑我们改过它。 */

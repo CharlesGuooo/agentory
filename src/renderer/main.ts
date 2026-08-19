@@ -975,7 +975,9 @@ if (!agentory) {
     $("sumProgress").textContent =
       `正在摘要 ${p.done}/${p.total}` +
       (p.failed ? ` · 失败 ${p.failed}` : "") +
-      (p.last ? ` · ${p.last.slice(0, 30)}` : "");
+      // 截断要看得出来是截断。原来是裸的 slice(0, 30)，**连省略号都不加** ——
+      // 一句被砍掉的话看起来就像模型只写了这么多。
+      (p.last ? ` · ${p.last.length > 30 ? `${p.last.slice(0, 30)}…` : p.last}` : "");
   });
 
   // ---------- 诊断（客户机器我们摸不到） ----------
@@ -1176,6 +1178,12 @@ if (!agentory) {
         },
       });
     }
+    /**
+     * 摘要在列表里被 `-webkit-line-clamp: 2` 砍着（历史那边更窄，是单行 ellipsis），
+     * 悬停能看全，但**要把它拿走只能靠这一项**。
+     * `v.label` 为空时不给这一项 —— 一个复制出「（没有可读的开头）」的菜单项是噪音。
+     */
+    if (v.label) items.push({ label: "复制摘要", run: () => api.copy(v.label!) });
     items.push({ label: "在资源管理器中打开", run: () => void api.openFolder(v.cwd) });
     items.push({ label: "复制工作目录", run: () => api.copy(v.cwd) });
     if (v.sessionId !== null) {
@@ -1200,6 +1208,7 @@ if (!agentory) {
     e.preventDefault();
     showMenu(e.clientX, e.clientY, [
       { label: "打开", run: () => ($("favTree").querySelector<HTMLElement>(`[data-fav="${CSS.escape(key!)}"]`) as HTMLElement | null)?.click() },
+      ...(f.label ? [{ label: "复制摘要", run: (): void => api.copy(f.label!) }] : []),
       { label: "在资源管理器中打开", run: () => void api.openFolder(f.cwd) },
       { label: "复制工作目录", run: () => api.copy(f.cwd) },
       { label: "复制 session id", run: () => api.copy(f.sessionId) },
@@ -1214,6 +1223,30 @@ if (!agentory) {
           });
         },
       },
+    ]);
+  });
+
+  /**
+   * 历史列表的右键菜单。**这里原本一个都没有** —— 而历史恰恰是摘要被砍得最狠的地方：
+   * 单行 `ellipsis`，前面还先被 6 位 session id 占掉一截。
+   */
+  $("histList").addEventListener("contextmenu", (e) => {
+    const row = (e.target as HTMLElement).closest<HTMLElement>(".hist-row");
+    const s = row ? shown[Number(row.dataset["i"])] : undefined;
+    if (!s) return;
+    e.preventDefault();
+    const label = summaryOf(s.agent, s.sessionId) ?? labelOf(s);
+    showMenu(e.clientX, e.clientY, [
+      ...(label ? [{ label: "复制摘要", run: (): void => api.copy(label) }] : []),
+      ...(s.cwd !== null
+        ? [
+            { label: "在资源管理器中打开", run: (): void => void api.openFolder(s.cwd!) },
+            { label: "复制工作目录", run: (): void => api.copy(s.cwd!) },
+          ]
+        : []),
+      ...(s.sessionId !== null
+        ? [{ label: "复制 session id", run: (): void => api.copy(s.sessionId!) }]
+        : []),
     ]);
   });
 
