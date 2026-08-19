@@ -330,11 +330,33 @@ if (!agentory) {
 
   // ---------- 总线 ----------
   api.onData((paneId, chunk) => panes.get(paneId)?.term.write(chunk));
+  /**
+   * 在等某个面板退出的人。
+   *
+   * 更新流程要「停掉会话 → **等它真的死了** → 再动文件」——
+   * Windows 会对运行中的 exe 加镜像锁，没死透就更新会得到一个半删的包树，
+   * 那正是当年 codex 事故留下缺失 shim 的机制。
+   */
+  const exitWaiters = new Map<string, (code: number) => void>();
+  const waitExit = (paneId: string, ms = 15_000): Promise<number | null> =>
+    new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        exitWaiters.delete(paneId);
+        resolve(null); // 超时。调用方要把 null 当「没等到」而不是「成功了」
+      }, ms);
+      exitWaiters.set(paneId, (code) => {
+        clearTimeout(timer);
+        resolve(code);
+      });
+    });
+
   api.onExit((paneId, info) => {
     const v = viewOfPane(paneId);
     // 进程退出**不改变成员资格**（D-5）—— 只改运行状态
     if (v) v.state = "stopped";
     panes.get(paneId)?.term.writeln(`\r\n\x1b[90m[会话已结束，退出码 ${info.exitCode}]\x1b[0m`);
+    exitWaiters.get(paneId)?.(info.exitCode);
+    exitWaiters.delete(paneId);
     paint();
   });
   api.onWorkspaceStarted(({ entry, spawned }) => {
@@ -1033,7 +1055,7 @@ if (!agentory) {
     },
   });
 
-  // ---------- Agent 版本（P2-a：只显示，不代劳） ----------
+  // ---------- Agent 版本 ----------
 
   /** 一行一个 agent。装了但读不出版本的照样列出来，写「版本未知」而不是消失。 */
   function renderVerRows(rows: Awaited<ReturnType<typeof api.agentsState>>["rows"]): void {
@@ -1048,9 +1070,15 @@ if (!agentory) {
         const link = r.releasesUrl
           ? `<button class="btn-ghost btn-mini" data-rel="${esc(r.releasesUrl)}">看更新说明</button>`
           : "";
-        // 更新命令只给复制。这个项目已经亲手弄坏过一次 codex，绝不代跑。
+        /**
+         * 「更新」按钮 + 命令本身。
+         *
+         * **命令留着**：它既是「我们要跑什么」的公示，也仍然可以复制去自己跑 ——
+         * 这个项目弄坏过一次 codex，让用户看得见我们要执行什么不是装饰。
+         */
         const cmd = r.updateCommand && r.hasUpdate
-          ? `<code class="ver-cmd" data-copy="${esc(r.updateCommand)}" title="点击复制">${esc(r.updateCommand)}</code>`
+          ? `<button class="btn-ghost btn-mini" data-update="${esc(r.agent)}">更新</button>` +
+            `<code class="ver-cmd" data-copy="${esc(r.updateCommand)}" title="点击复制">${esc(r.updateCommand)}</code>`
           : "";
         // 四个格子永远都在，空的也占位 —— 少一个格子后面的列就整体左移
         return `<div class="ver-row">
@@ -1095,8 +1123,10 @@ if (!agentory) {
     void api.agentsCheck().then(renderVerState);
   });
   $("verRows").addEventListener("click", (e) => {
-    const t = (e.target as HTMLElement).closest("[data-rel],[data-copy]") as HTMLElement | null;
+    const t = (e.target as HTMLElement).closest("[data-rel],[data-copy],[data-update]") as HTMLElement | null;
     if (!t) return;
+    const up = t.getAttribute("data-update");
+    if (up) return void updateAgent(up as AgentId);
     const rel = t.getAttribute("data-rel");
     if (rel) return void api.agentsOpenReleases(rel);
     const cmd = t.getAttribute("data-copy");
@@ -1314,6 +1344,123 @@ if (!agentory) {
       renderFontRow();
     });
   };
+
+  /**
+   * 一键更新一个 agent：**停会话 → 在看得见的终端里跑 → 验版本 → 把会话放回来。**
+   *
+   * ## 为什么必须先停
+   *
+   * Windows 对运行中的 exe 加镜像锁（`grok.exe` 有 140 MB，锁得最死），
+   * 而 npm 的更新是「删掉整个包目录再重新解包」——
+   * 27 个进程里任何一个占着文件就是 EBUSY，留下一个半删的包树。
+   * **那正是当年 codex 事故留下「缺失的 shim」的机制。**
+   *
+   * ## 只信重读出来的版本号
+   *
+   * npm 退出码 0 不等于装成功：可能装到了另一个 prefix、可能权限不够、
+   * 可能 EBUSY 到一半。所以第 ⑤ 步重读 `package.json`，比对前后版本。
+   */
+  let updating = false;
+  async function updateAgent(agent: AgentId): Promise<void> {
+    if (updating) return;
+    updating = true;
+    const say = (s: string): void => {
+      $("verStatus").textContent = s;
+    };
+    try {
+      // ① 记下这个 agent 正在跑的会话（为了之后放回来）
+      const running = views.filter((v) => v.agent === agent && v.paneId !== null && !v.ephemeral);
+      const entries = running.map(entryOfView);
+
+      // ② 停掉，并且**等它们真的死了**
+      let stuck = 0;
+      if (running.length > 0) {
+        say(`正在停掉 ${running.length} 个 ${agent} 会话…`);
+        for (const v of running) {
+          const pane = v.paneId!;
+          const wait = waitExit(pane);
+          api.kill(pane);
+          const code = await wait;
+          disposePane(pane);
+          views.splice(views.indexOf(v), 1);
+          if (code === null) stuck++;
+        }
+        paint();
+      }
+      // 没退干净的**带到最终那条消息里**。在循环里 say 会被第 ③ 步立刻覆盖，等于没说。
+      const stuckNote = stuck > 0 ? `（有 ${stuck} 个会话没在 15 秒内退干净）` : "";
+
+      // ③ 在一个看得见的终端里跑更新
+      const [cols, rows] = dims();
+      const started = await api.agentsStartUpdate(agent, cols, rows);
+      if (!started.ok || !started.id) {
+        say(`起不了更新：${started.error ?? "未知原因"}`);
+        return;
+      }
+      say(`正在更新 ${agent}：${started.display ?? ""}`);
+      attach(
+        {
+          key: `更新|${agent}`,
+          agent,
+          sessionId: null,
+          cwd: "",
+          paneId: null,
+          state: "notStarted",
+          command: started.display ?? "",
+          label: `更新 ${agent}`,
+          ephemeral: true,
+        },
+        started.id,
+      );
+
+      // ④ 等它跑完。npm 装一个包可能要一分钟以上
+      const code = await waitExit(started.id, 300_000);
+
+      // ⑤ **重读版本**。退出码只是参考，版本号才是证据
+      const st = await api.agentsState();
+      const now = st.rows.find((r) => r.agent === agent)?.version ?? null;
+      const moved = started.before !== now;
+      renderVerState(st);
+      if (!moved) {
+        say(
+          (code === null
+            ? `${agent} 的更新还没结束（等超时了），版本仍是 ${started.before ?? "读不到"} —— 看那个标签页`
+            : `${agent} 的版本没变（仍是 ${started.before ?? "读不到"}），退出码 ${String(code)} —— 看那个标签页里说了什么`) +
+            stuckNote,
+        );
+        return;
+      }
+
+      /**
+       * 更新成功了就把那个临时面板收走。
+       *
+       * **它没有 ✕**：标签栏本来就没有关闭键，而 ephemeral 的 view 不进侧栏，
+       * 所以侧栏那个 ✕ 也够不着它 —— 留着就是一个关不掉的标签页。
+       * 失败时**刻意留着**：那里面是唯一能说清为什么失败的东西。
+       */
+      const upView = viewOfPane(started.id);
+      disposePane(started.id);
+      if (upView) views.splice(views.indexOf(upView), 1);
+      paint();
+
+      // ⑥ 把会话放回来
+      let back = 0;
+      if (entries.length > 0) {
+        say(`${agent} ${started.before ?? "?"} → ${now ?? "?"}，正在把 ${entries.length} 个会话放回来…`);
+        const outs = await api.workspaceRestoreAll(entries, cols, rows);
+        back = outs.filter((o) => o.ok).length;
+      }
+      say(
+        `${agent} 已更新：${started.before ?? "?"} → ${now ?? "?"}` +
+          (entries.length > 0 ? `，${back}/${entries.length} 个会话已恢复` : "") +
+          stuckNote,
+      );
+    } catch (e) {
+      say(`更新 ${agent} 出错：${cleanIpcError((e as Error).message)}`);
+    } finally {
+      updating = false;
+    }
+  }
 
   function runAction(hit: NonNullable<ReturnType<typeof resolve>>): void {
     const l = live();

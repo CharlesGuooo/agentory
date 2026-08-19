@@ -1,7 +1,9 @@
 import { app, ipcMain, shell, type BrowserWindow } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AgentId } from "../sessions/types";
+import { spawnManaged } from "../terminal/ipc";
 import { isNewer } from "./compare";
 import { installedVersions, type Installed } from "./installed";
 import { fetchLatest } from "./latest";
@@ -59,7 +61,7 @@ export interface AgentRow extends Installed {
   latest: string | null;
   releasesUrl: string | null;
   hasUpdate: boolean;
-  /** 更新命令。**只给用户复制，永远不由我们执行。** */
+  /** 更新命令。既是可复制的那条，也是点「更新」时我们真正会执行的那条。 */
   updateCommand: string | null;
 }
 
@@ -72,13 +74,45 @@ export interface AgentsState {
   checkEnabled: boolean;
 }
 
+interface UpdatePlan {
+  command: string;
+  args: string[];
+  /** 给用户看的那条。它也是「我们要执行什么」的公示，所以和上面两个字段同源。 */
+  display: string;
+}
+
 /**
- * 更新命令。npm 包名来自它自己的 `package.json`，**不写死**。
+ * 这个 agent 怎么更新。npm 包名来自它自己的 `package.json`，**不写死**；
  * grok 不走 npm，用它自带的 `grok update`。
+ *
+ * **显示和执行必须同源。** 拆成两个函数（一个给字符串、一个给 spawn 参数）时，
+ * 两边判的是同一个条件，于是「一边返回 null、另一边没有」的兜底分支永远不可达 ——
+ * 那种代码看着像防御，实际是留给两边分叉的入口。
+ *
+ * **npm 不能走 `resolveCommand`** —— 实测它抛「无法解析」：npm 的 `.cmd` shim
+ * 用 `%_prog%` 引用 node，两条分支（找 `.exe` / 找 `.js`）都匹配不到。
+ * 所以套一层 `cmd.exe /c`。`resolve.ts` 的注释说套 cmd 会多一个要清理的进程 ——
+ * 那条针对的是**长期跑的 agent 会话**；这里是个一次性命令，我们等它退出，代价不成立。
+ * grok 在 PATH 里就是 `.exe`，`resolveCommand` 直接命中。
  */
-function updateCommandOf(i: Installed): string | null {
-  if (i.agent === "grok") return "grok update";
-  return i.pkg === null ? null : `npm install -g ${i.pkg}`;
+function updateOf(i: Installed): UpdatePlan | null {
+  if (i.agent === "grok") return { command: "grok", args: ["update"], display: "grok update" };
+  if (i.pkg === null) return null;
+  return {
+    command: "cmd.exe",
+    args: ["/c", "npm", "install", "-g", i.pkg],
+    display: `npm install -g ${i.pkg}`,
+  };
+}
+
+export interface UpdateStart {
+  ok: boolean;
+  error?: string;
+  /** 起更新之前读到的版本。之后要拿它和重读的结果比 —— 只信版本号，不信退出码。 */
+  before?: string | null;
+  /** 给用户看的那条命令，和面板标题一致 */
+  display?: string;
+  id?: string;
 }
 
 let cache: Cache | null = null;
@@ -96,7 +130,7 @@ function buildRows(): AgentRow[] {
       releasesUrl: hit?.url ?? null,
       // 任一边读不出来就**不声称**有新版 —— 误报会把用户推去做一次没必要的升级
       hasUpdate: latest !== null && i.version !== null && isNewer(latest, i.version),
-      updateCommand: updateCommandOf(i),
+      updateCommand: updateOf(i)?.display ?? null,
     };
   });
 }
@@ -151,6 +185,46 @@ export function registerAgentsIpc(getWindow: () => BrowserWindow | null, checkEn
     await refresh(true);
     return state();
   });
+
+  /**
+   * 起一个更新。**只负责起,不负责停会话、不负责重启** —— 那两件事在渲染层，
+   * 因为只有它知道哪些面板属于这个 agent。
+   *
+   * ## 这是在改写 D-15 的一半，理由要写在这里
+   *
+   * D-15 原本是「显示，不代劳」，起因是 `findings.md:130-137` 那次事故：
+   * 探针**盲发** `/help` + 回车，在 codex 的「Update available」对话框上选中了
+   * 「立即更新」，把 codex 卸掉重装并留下缺失的 shim。
+   *
+   * **那次的错不在「代跑」，在「盲发按键 + 用户看不见」。** 这里恰好把两点都反过来：
+   * 命令是我们按 `package.json` 里的包名明确构造的（不是撞到的），
+   * 而且**跑在一个用户看得见的终端面板里** —— npm 要是问什么，用户能回答。
+   *
+   * 仍然保留的那一半：**不起 agent 进程去问版本**（`installed.test.ts` 那条
+   * 「只许起 where.exe」的断言继续守着 `installedVersions()`）。
+   */
+  ipcMain.handle(
+    "agents:startUpdate",
+    (_e, agent: AgentId, cols: number, rows: number): UpdateStart => {
+      const i = installedVersions().find((x) => x.agent === agent);
+      if (!i) return { ok: false, error: `没有检测到 ${agent}` };
+      const plan = updateOf(i);
+      if (!plan) {
+        return { ok: false, error: `${agent} 不是通过 npm 装的，我们不知道该怎么更新它` };
+      }
+      try {
+        const s = spawnManaged({ ...plan, cwd: homedir(), cols, rows }, getWindow);
+        return {
+          ok: true,
+          before: i.version,
+          display: plan.display,
+          id: s.id,
+        };
+      } catch (e) {
+        return { ok: false, error: (e as Error).message };
+      }
+    },
+  );
 
   /** 「看更新说明」—— 用系统浏览器打开，不在应用里内嵌网页。 */
   ipcMain.handle("agents:openReleases", async (_e, url: string): Promise<void> => {

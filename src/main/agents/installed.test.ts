@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { changelogUp, installedVersions, packageJsonUp } from "./installed";
+import { changelogUp, downloadsUp, installedVersions, packageJsonUp } from "./installed";
 
 /**
  * 记下所有起过的子进程。`vi.mock` 会被提升到文件顶部，所以这个数组必须走 `vi.hoisted`。
@@ -105,6 +105,62 @@ describe("从可执行文件往上找 CHANGELOG.md 首行（grok 这类独立二
   });
 });
 
+describe("从 downloads/ 读 grok 真正装上去的版本", () => {
+  /** 本机实测的真实形状：`~/.grok/downloads/grok-1.0.5-windows-x86_64/` 是个目录。 */
+  it("认得出 downloads/grok-<版本>-<平台>", () => {
+    const root = tree("j", {
+      "downloads/grok-1.0.5-windows-x86_64/grok.exe": "x",
+      "bin/grok.exe": "x",
+    });
+    expect(downloadsUp(join(root, "bin/grok.exe"))).toBe("1.0.5");
+  });
+
+  /**
+   * **这条是真正的回归守卫。** 2026-08-19 实测：`grok update` 换掉了二进制、
+   * 写了 downloads/，但没碰 CHANGELOG.md。只读 CHANGELOG 会永远停在 0.2.118 上。
+   */
+  it("两个来源都在时走 downloads —— 自更新之后只有它是对的", () => {
+    const root = tree("k", {
+      "CHANGELOG.md": "# 0.2.118 — 2026-07-31\n", // 安装器写的，自更新器不管它
+      "downloads/grok-1.0.5-windows-x86_64/grok.exe": "x",
+      "bin/grok.exe": "x",
+    });
+    const hit = installedVersions(() => ({
+      exe: join(root, "bin/grok.exe"),
+      args: [],
+      via: "测试",
+    })).find((i) => i.agent === "grok");
+    expect(hit?.version).toBe("1.0.5");
+    expect(hit?.from).toBe("downloads/");
+  });
+
+  it("有多次安装记录时取**最后装的**那个，不是版本号最大的", () => {
+    const root = tree("l", {
+      "downloads/grok-0.9.0-windows-x86_64/grok.exe": "x",
+      "downloads/grok-1.0.5-windows-x86_64/grok.exe": "x",
+      "bin/grok.exe": "x",
+    });
+    // 让 1.0.5 显得更早 —— 模拟用户装完 1.0.5 之后又装回 0.9.0
+    const past = new Date(Date.now() - 86_400_000);
+    utimesSync(join(root, "downloads/grok-1.0.5-windows-x86_64"), past, past);
+    expect(downloadsUp(join(root, "bin/grok.exe"))).toBe("0.9.0");
+  });
+
+  /** 装 grok 时留下的那个 `grok-windows-x86_64.exe` 名字里没版本号，不能瞎认。 */
+  it("名字里没有版本号的条目不算，回落给 CHANGELOG", () => {
+    const root = tree("m", {
+      "downloads/grok-windows-x86_64.exe": "x",
+      "bin/grok.exe": "x",
+    });
+    expect(downloadsUp(join(root, "bin/grok.exe"))).toBeNull();
+  });
+
+  it("没有 downloads/ 就是 null", () => {
+    const root = tree("n", { "bin/x.exe": "x" });
+    expect(downloadsUp(join(root, "bin/x.exe"))).toBeNull();
+  });
+});
+
 describe("真机：五个 agent 的已装版本", () => {
   /**
    * **这条测试必须证明「一个 agent 子进程都没起」。**
@@ -138,7 +194,11 @@ describe("真机：五个 agent 的已装版本", () => {
     expect(list.length).toBeGreaterThan(0);
     for (const i of list) {
       expect(i.version, `${i.agent} 没读出版本`).not.toBeNull();
-      expect(i.version, `${i.agent} 的版本不像 semver`).toMatch(/^\d+\.\d+/);
+      // **整串都要像版本号**。原来是 `/^\d+\.\d+/`（不锚尾），grok 读出
+      // `1.0.5-windows` 时它照样绿 —— 只管开头的断言拦不住「后面多粘了东西」。
+      expect(i.version, `${i.agent} 的版本不像 semver`).toMatch(
+        /^\d+\.\d+(?:\.\d+)*(?:-[0-9A-Za-z.]+)?$/,
+      );
     }
 
     // 唯一允许起的进程是 where.exe（`resolveCommand` 用它查 PATH）。

@@ -30,6 +30,13 @@ export interface SessionView {
    * 所以它跨五个 agent 通用。切到该会话时清除。
    */
   needsAttention?: boolean;
+  /**
+   * 临时面板：**进标签页，但不进侧栏、不进工作集**。
+   *
+   * 目前只有「更新 agent」用它 —— 那是一条一次性命令，不是会话。
+   * 让它进工作集会留下一条永远起不来的记录；让它进侧栏会和真会话混在一起。
+   */
+  ephemeral?: boolean;
 }
 
 /** 侧栏收藏区块的一行。 */
@@ -131,8 +138,9 @@ export function renderSessions(views: SessionView[], activeKey: string | null, c
     return;
   }
 
+  // 临时面板（更新 agent）不进侧栏 —— 它不是会话，混进工作集里会让人以为多了一条
   const groups = new Map<string, SessionView[]>();
-  for (const v of views) {
+  for (const v of views.filter((x) => !x.ephemeral)) {
     const k = folderOf(v.cwd);
     groups.set(k, [...(groups.get(k) ?? []), v]);
   }
@@ -158,7 +166,8 @@ export function renderSessions(views: SessionView[], activeKey: string | null, c
     )
     .join("");
 
-  $("runningCount").textContent = `${views.filter((v) => v.state === "running").length} 个在跑`;
+  $("runningCount").textContent =
+    `${views.filter((v) => v.state === "running" && !v.ephemeral).length} 个在跑`;
 }
 
 /**

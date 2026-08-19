@@ -1113,6 +1113,67 @@ async function smokeZoom(win: BrowserWindow): Promise<void> {
   check("zoom", fonts.length > 0, "一个等宽字体都没探测到 —— 下拉会是空的");
 }
 
+/**
+ * `UPDATE=<agent>`：真的点一次「更新」，等它跑完，看版本号有没有变。
+ *
+ * **这条只能真跑** —— 它验的是「停会话 → 覆盖磁盘上的包 → 版本真的变了 → 会话回来」，
+ * 每一环都在文件系统和进程层面，没有一环能用桩件代替。
+ */
+async function smokeUpdate(win: BrowserWindow, agent: string): Promise<void> {
+  await run(win, 'document.getElementById("gear").click()');
+  await wait(3000);
+
+  const before = String(
+    await run(
+      win,
+      `(() => {
+        const row = [...document.querySelectorAll("#verRows .ver-row")].find((r) => r.querySelector(".ver-name")?.textContent === ${JSON.stringify(agent)});
+        if (!row) return "没有这一行";
+        const btn = row.querySelector('[data-update]');
+        return JSON.stringify({ 版本列: row.querySelector(".ver-num")?.textContent?.trim(), 有更新按钮: !!btn });
+      })()`,
+    ),
+  );
+  say("smoke-update-before", before);
+  if (!before.includes('"有更新按钮":true')) {
+    check("update", false, `${agent} 那一行没有「更新」按钮（可能本来就是最新版）：${before}`);
+    return;
+  }
+
+  await run(
+    win,
+    `document.querySelector('#verRows [data-update="${agent}"]').click()`,
+  );
+
+  // npm 装一个包可能要一分钟以上；轮询到状态行不再是「正在…」
+  const deadline = Date.now() + 240_000;
+  let status = "";
+  while (Date.now() < deadline) {
+    await wait(3000);
+    status = String(await run(win, 'document.getElementById("verStatus").textContent'));
+    if (!status.includes("正在")) break;
+  }
+  say("smoke-update-status", status);
+
+  const after = String(
+    await run(
+      win,
+      `(() => {
+        const row = [...document.querySelectorAll("#verRows .ver-row")].find((r) => r.querySelector(".ver-name")?.textContent === ${JSON.stringify(agent)});
+        return JSON.stringify({
+          版本列: row?.querySelector(".ver-num")?.textContent?.trim(),
+          还有更新按钮: !!row?.querySelector("[data-update]"),
+          临时面板还在: [...document.querySelectorAll("#tabs .tab")].some((t) => t.dataset.key?.startsWith("更新|")),
+        });
+      })()`,
+    ),
+  );
+  say("smoke-update-after", after);
+  // **只信版本号**：退出码 0 不等于装成功
+  check("update", status.includes("已更新"), `更新没走到「已更新」：${status}`);
+  check("update", !after.includes('"还有更新按钮":true'), `版本没变，更新按钮还在：${after}`);
+}
+
 /** 快捷键与右键菜单的点击路径。两者都没有单元测试能覆盖到接线这一层。 */
 async function smokeKeys(win: BrowserWindow): Promise<void> {
   say(
@@ -1325,6 +1386,7 @@ export function attachSmoke(win: BrowserWindow, quit: (code: number) => void): v
       if (env("DPAPI")) await smokeDpapi(win, env("DPAPI")!, check);
       if (env("KEYS") === "1") await smokeKeys(win);
       if (env("ZOOM")) await smokeZoom(win);
+      if (env("UPDATE")) await smokeUpdate(win, env("UPDATE")!);
       if (env("HISTPERF") === "1") await smokeHistPerf(win);
       if (env("BELL") === "1") await smokeBell(win);
       if (env("END") === "1") {

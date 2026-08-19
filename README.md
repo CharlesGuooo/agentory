@@ -52,7 +52,9 @@ The tray icon opens the window again; **quitting is a separate, explicit choice*
 tray's right-click menu, and it is the only thing that ends the sessions.
 
 **Summarises each session.** One sentence saying what the session was about, so you can
-tell two `a3f9c1e2` apart. This is **off by default and needs your own DeepSeek API key** —
+tell two `a3f9c1e2` apart. The sidebar shows about two lines of it; hover for the whole
+thing, or right-click the session to copy it. This is **off by default and needs your own
+DeepSeek API key** —
 it is the only feature that sends **your content** anywhere, so it is a deliberate,
 separate switch. Before you enable it, the settings panel will show you the **exact text
 that would be sent** for one of your own sessions.
@@ -67,9 +69,16 @@ a newer version does reach the network (npm's registry, and x.ai for Grok), but 
 thing sent is a package name; no session content is involved. It is on by default and can
 be switched off.
 
-**Agentory never updates an agent for you.** It shows you the command and you run it. That
-is not caution for its own sake: an early probe of ours pressed Enter on Codex's "update
-now?" dialog and uninstalled it.
+**Updates an agent in one click, in a terminal you can watch.** Agentory stops that agent's
+running sessions, runs the update in a visible tab, re-reads the version from disk to
+confirm it actually changed, and restarts the sessions it stopped. It reports the old and
+new version and how many sessions came back.
+
+Two things it never does. It never presses a key inside an agent's own interface — an early
+probe of ours did exactly that, hitting Enter on Codex's "update now?" dialog and
+uninstalling it, which is why the update runs as a plain command in a tab you can read and
+answer. And it never trusts an exit code: `npm install -g` can exit 0 having installed
+nothing, so the only thing that counts as success is the version number read back off disk.
 
 **Shows which skills and MCP servers each agent has, and moves skills between them.**
 One row per skill, one column per agent, one click to install or uninstall. Installing
@@ -149,7 +158,8 @@ variables, so they never touch your own configuration.
 ## Status
 
 Working: session index, resume, workspace persistence, favourites, session summaries,
-agent version checks, a cross-agent skills/MCP matrix with skill install/uninstall,
+agent version checks and one-click agent updates, a cross-agent skills/MCP matrix with
+skill install/uninstall,
 themes, keyboard shortcuts, terminal-bell notifications.
 
 Not built yet:

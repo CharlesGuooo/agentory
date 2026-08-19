@@ -1,5 +1,5 @@
 import { clipboard, contextBridge, ipcRenderer, shell } from "electron";
-import type { AgentsState } from "../main/agents/ipc";
+import type { AgentsState, UpdateStart } from "../main/agents/ipc";
 import type { DiagnosticsText } from "../main/diagnostics";
 import type { SkillActionResult } from "../main/harness/ipc";
 import type { HarnessMatrix, Scope } from "../main/harness/types";
@@ -120,14 +120,20 @@ const api = {
   },
 
   /**
-   * Agent 版本（P2-a）。**只显示，不代劳** —— 更新命令给用户复制，我们绝不执行它。
-   * 读本机版本是纯文件读；查最新版会出网，但只发包名（D-8 第三档）。
+   * Agent 版本（P2-a）。读本机版本是**纯文件读，绝不起 agent 进程**；
+   * 查最新版会出网，但只发包名（D-8 第三档）。
+   *
+   * `agentsStartUpdate` 改写了 D-15 的一半：更新**可以**由我们发起，
+   * 但必须跑在用户看得见的终端面板里（见主进程那一段注释里的理由）。
    */
   agentsState: (): Promise<AgentsState> => ipcRenderer.invoke("agents:state"),
   agentsSetCheckEnabled: (v: boolean): Promise<AgentsState> =>
     ipcRenderer.invoke("agents:setCheckEnabled", v),
   agentsCheck: (): Promise<AgentsState> => ipcRenderer.invoke("agents:check"),
   agentsOpenReleases: (url: string): Promise<void> => ipcRenderer.invoke("agents:openReleases", url),
+  /** 起一条更新命令。只起，停会话与重启由渲染层编排 —— 只有它知道哪些面板属于这个 agent。 */
+  agentsStartUpdate: (agent: AgentId, cols: number, rows: number): Promise<UpdateStart> =>
+    ipcRenderer.invoke("agents:startUpdate", agent, cols, rows),
   onAgentsUpdateAvailable: (cb: (n: number) => void): (() => void) => {
     const h = (_e: unknown, n: number): void => cb(n);
     ipcRenderer.on("agents:update-available", h);
