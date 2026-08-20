@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { app, BrowserWindow, ipcMain, Menu, Notification, Tray } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, Tray } from "electron";
 import { registerAgentsIpc } from "./agents/ipc";
 import { registerFavoritesIpc } from "./favorites/ipc";
 import { registerDiagnosticsIpc } from "./diagnostics";
@@ -51,6 +51,12 @@ function iconPath(): string | undefined {
 }
 
 const icon = iconPath();
+
+/**
+ * 看门狗时长：到点还没画出第一帧就把窗口显示出来（见 `createWindow` 里的注释）。
+ * `NOLOAD` 那条验证路径调短 —— 否则每验一次都要干等 15 秒。
+ */
+const WATCHDOG_MS = process.env["AGENTORY_SMOKE_NOLOAD"] === "1" ? 2000 : 15_000;
 
 /** 把窗口叫回来。托盘左键、托盘菜单、第二个实例都走它。 */
 function showWindow(): void {
@@ -135,7 +141,59 @@ function createWindow(): void {
 
   mainWindow = win;
   win.on("closed", () => { mainWindow = null; });
-  win.once("ready-to-show", () => win.show());
+
+  /**
+   * **窗口必须显示出来，哪怕页面没加载成功。**
+   *
+   * 原来这里只有一行 `win.once("ready-to-show", () => win.show())`，
+   * 而加载那句是 `void win.loadFile(...)` —— **失败被整个吞掉**。
+   * 加载不成功 → `ready-to-show` 永不触发 → `win.show()` 永不执行 →
+   * 窗口永远不显示，**而且一个字都不说**。
+   *
+   * 这个缺陷是追另一件事时顺手发现的。**那另一件事后来证明是误判**
+   *（机器内存压力把 Chromium 的合成拖慢了，不是安装、不是构建，见 D-U11）——
+   * 但「加载失败之后一声不吭」本身是真的，和那场误判无关。
+   */
+  let shown = false;
+  let watchdog: NodeJS.Timeout | undefined;
+  const reveal = (why: string): void => {
+    if (shown) return;
+    shown = true;
+    if (watchdog) clearTimeout(watchdog);
+    process.stdout.write(`[window] ${why}\n`);
+    win.show();
+  };
+  win.once("ready-to-show", () => reveal("画出第一帧，正常显示"));
+
+  /**
+   * 加载**确定**失败了 —— 这种要说话。
+   *
+   * 和下面的看门狗刻意不同：看门狗只知道「慢」，这里知道「坏」。
+   * 渲染层已经不可用，所以只剩原生对话框这一条通道。
+   * （冒烟里不弹 —— 模态框会把自动化整个挂住。那条路只验日志和「窗口显示了」。）
+   */
+  win.webContents.on("did-fail-load", (_e, code, desc, url) => {
+    process.stdout.write(`[window] 界面加载失败：${String(code)} ${desc} ${url}\n`);
+    reveal("加载失败，先把窗口显示出来");
+    if (!smokeEnabled()) {
+      dialog.showErrorBox(
+        "Agentory 没能加载界面",
+        `${desc}（${String(code)}）\n${url}\n\n重开一次通常就好了。`,
+      );
+    }
+  });
+
+  /**
+   * 兜底：到点还没画出第一帧就把窗口显示出来，**不弹框**。
+   *
+   * 这时候我们只知道「慢」，不知道「坏」—— 在一台慢机器上弹「界面没能加载」是误报。
+   * 而把窗口显示出来是实打实的改善：用户至少知道应用起来了、能关掉、能用托盘。
+   * 本机 `ready-to-show` 实测约 2 秒，15 秒不会误伤。
+   */
+  watchdog = setTimeout(
+    () => reveal(`${String(WATCHDOG_MS)} ms 还没画出第一帧，先把窗口显示出来`),
+    WATCHDOG_MS,
+  );
 
   /**
    * **叉掉窗口 = 收进托盘，不是退出。**
@@ -205,11 +263,29 @@ function createWindow(): void {
     });
   }
 
-  if (process.env["ELECTRON_RENDERER_URL"]) {
-    void win.loadURL(process.env["ELECTRON_RENDERER_URL"]);
-  } else {
-    void win.loadFile(join(import.meta.dirname, "../renderer/index.html"));
-  }
+  /**
+   * 两个测试钩子。没有它们，上面那两条兜底路径**只能靠真装一次去撞**，
+   * 而它们恰恰是「平时永远不走、真走到时用户最需要」的那种代码。
+   *
+   * - `NOLOAD`：压根不发起加载 → 只有看门狗能救场
+   * - `BADLOAD`：加载一个不存在的文件 → 走 `did-fail-load`
+   */
+  const load = (): Promise<void> => {
+    if (process.env["AGENTORY_SMOKE_NOLOAD"] === "1") {
+      process.stdout.write("[window] NOLOAD：故意不发起加载，看看看门狗救不救得回来\n");
+      return Promise.resolve();
+    }
+    if (process.env["AGENTORY_SMOKE_BADLOAD"] === "1") {
+      return win.loadFile(join(import.meta.dirname, "../renderer/这个文件不存在.html"));
+    }
+    if (process.env["ELECTRON_RENDERER_URL"]) {
+      return win.loadURL(process.env["ELECTRON_RENDERER_URL"]);
+    }
+    return win.loadFile(join(import.meta.dirname, "../renderer/index.html"));
+  };
+  // 具体的错误由上面的 `did-fail-load` 报。这里只是别让它变成 unhandled rejection ——
+  // 原来那个 `void` 连这一层都没有，失败之后整个应用一声不吭。
+  load().catch(() => undefined);
 }
 
 /**

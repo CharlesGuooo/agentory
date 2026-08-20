@@ -1576,6 +1576,34 @@ async function smokeSummary(win: BrowserWindow): Promise<void> {
 export function attachSmoke(win: BrowserWindow, quit: (code: number) => void): void {
   const delay = Number(env("DELAY") ?? 1500);
 
+  /**
+   * `NOLOAD` / `BADLOAD`：验「页面根本没加载出来时，窗口还显示不显示」。
+   *
+   * **这两条不能挂在 `did-finish-load` 上** —— 页面加载不出来正是它们的前提，
+   * 挂在那上面等于永远不跑，然后超时被杀掉，看起来像「没测到问题」。
+   *
+   * 它们守的是 `void win.loadFile(...)` 曾经的结局：加载失败被整个吞掉 →
+   * `ready-to-show` 永不触发 → 窗口永远不显示，**而且一个字都不说**。
+   */
+  const loadMode = env("NOLOAD") === "1" ? "NOLOAD" : env("BADLOAD") === "1" ? "BADLOAD" : null;
+  if (loadMode !== null) {
+    void (async () => {
+      // 比 15 秒的看门狗宽一点；NOLOAD 那条把看门狗调到了 2 秒
+      await wait(loadMode === "NOLOAD" ? 6000 : 20_000);
+      const vis = win.isVisible();
+      say("smoke-load", JSON.stringify({ 模式: loadMode, 窗口显示了: vis }));
+      check(
+        "load",
+        vis,
+        `${loadMode}：页面没加载出来，窗口也没显示 —— 用户看到的就是「双击了图标什么都没发生」`,
+      );
+      if (failures.length > 0) for (const f of failures) process.stdout.write(`  ✗ ${f}\n`);
+      else process.stdout.write("[smoke-result] 全部通过\n");
+      quit(failures.length > 0 ? 1 : 0);
+    })();
+    return;
+  }
+
   win.webContents.once("did-finish-load", () => {
     void (async () => {
       if (env("NEW") === "all") {
