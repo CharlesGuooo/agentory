@@ -1,6 +1,6 @@
 import { getLang, t } from "../../shared/i18n";
 import { app, ipcMain, safeStorage, type BrowserWindow } from "electron";
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { scanAllAgents } from "../sessions/all";
 import type { AgentId, Session } from "../sessions/types";
@@ -17,6 +17,12 @@ const keyPath = (): string => join(app.getPath("userData"), "deepseek.key");
 let cache = new Map<string, SummaryEntry>();
 let warnings: string[] = [];
 let running = false;
+/**
+ * 保存过的密钥解不开、已经被挪走了。**一直留着直到用户重填一把新的** ——
+ * `readKey()` 只在第一次失败时看得见这件事（之后文件已经不在了），
+ * 而界面要能一直说清楚「你的 key 没了、原因是什么」。
+ */
+let keyDropped = false;
 let stop = false;
 
 /**
@@ -34,11 +40,34 @@ function readKey(): { key: string | null; fromEnv: boolean } {
   try {
     return { key: safeStorage.decryptString(readFileSync(p)), fromEnv: false };
   } catch {
-    // 换了机器 / 换了账户就解不开。删掉它，让用户重填，而不是反复报错。
+    /**
+     * 解不开。**这件事必须说出来，而且不能把它直接删掉。**
+     *
+     * 原来这里是静默 `unlinkSync` —— 注释写的是「换了机器就解不开，删掉让用户重填」。
+     * 删掉本身没错（留着只会每次都失败），错在**一个字都不说**：
+     * 密钥凭空消失，用户只会以为是自己没保存。
+     *
+     * 这不是假想的场景，是**真发生过的一次事故**：维护者排查另一个问题时把 userData 里的
+     * Chromium 状态整批挪走，其中包括 `Local State` —— 而 `safeStorage` 的密文正是靠
+     * 那里面的 OSCrypt 密钥解的。Chromium 重建了一把新的，于是所有密文当场作废。
+     * 定位它花了三轮实验，**就因为现场什么都没留下**（见 D-U12）。
+     *
+     * 改两件事：
+     * 1. **挪到一边而不是删** —— 和 `entryFile.ts` 处理坏记录的 `.bak` 一个规矩。
+     *    它已经解不开了，留着不为恢复，是为了留下「你确实存过一把」这个事实。
+     * 2. **记一个标志**，让界面能说一句话。
+     */
+    keyDropped = true;
+    process.stdout.write("[summary] 保存的 API key 解不开了，已挪到 deepseek.key.unreadable\n");
     try {
-      unlinkSync(p);
+      renameSync(p, `${p}.unreadable`);
     } catch {
-      /* 删不掉也没关系 */
+      // 挪不动（占用、只读）就退回删除 —— 留着一份每次都失败的密文更糟
+      try {
+        unlinkSync(p);
+      } catch {
+        /* 都不行也不该让应用起不来 */
+      }
     }
     return { key: null, fromEnv: false };
   }
@@ -48,6 +77,8 @@ export interface SummaryState {
   enabled: boolean;
   hasKey: boolean;
   keyFromEnv: boolean;
+  /** 存过的密钥解不开、已被挪到 `.unreadable`。界面要为此说一句话。 */
+  keyDropped: boolean;
   /** 缓存里有多少条。 */
   cached: number;
   warnings: string[];
@@ -78,6 +109,7 @@ export function registerSummaryIpc(getWindow: () => BrowserWindow | null, enable
       enabled: enabled.get(),
       hasKey: k.key !== null,
       keyFromEnv: k.fromEnv,
+      keyDropped,
       cached: cache.size,
       warnings,
       model: MODEL,
@@ -94,6 +126,8 @@ export function registerSummaryIpc(getWindow: () => BrowserWindow | null, enable
 
   ipcMain.handle("summary:setKey", (_e, raw: string): SummaryState => {
     const k = raw.trim();
+    // 填了新的就把那条警告收掉 —— 问题已经解决，还挂着就成了噪音
+    if (k) keyDropped = false;
     if (!k) {
       if (existsSync(keyPath())) unlinkSync(keyPath());
     } else if (safeStorage.isEncryptionAvailable()) {

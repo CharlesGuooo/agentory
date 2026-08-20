@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BrowserWindow } from "electron";
+import { app, type BrowserWindow } from "electron";
 import { t } from "../shared/i18n";
 import { livePids } from "./terminal/ipc";
 import { smokeClean, smokeDpapi } from "./smoke-clean";
@@ -1492,6 +1492,54 @@ async function smokeLang(win: BrowserWindow): Promise<void> {
   }
 }
 
+/**
+ * `KEYDROP=1`：往 userData 里塞一个解不开的 `deepseek.key`，验应用**说不说话**。
+ *
+ * 这条路在产品的整个生命周期里没被测过，而它出事时的表现是**密钥凭空消失、
+ * 一个字都不说** —— 用户只会以为是自己没保存。真发生过一次（D-U12），
+ * 定位花了三轮实验，就因为现场什么都没留下。
+ *
+ * 三件事一起验：文件被挪到 `.unreadable`（不是删掉）、原文件没了、界面说了那句话。
+ */
+async function smokeKeyDrop(win: BrowserWindow): Promise<void> {
+  const dir = app.getPath("userData");
+  const p = join(dir, "deepseek.key");
+  // 一段绝不可能解开的密文。`safeStorage.decryptString` 会抛，正是要测的那条路。
+  writeFileSync(p, Buffer.from("这不是任何一把密钥能解开的东西", "utf8"));
+  say("smoke-keydrop-before", JSON.stringify({ key存在: existsSync(p) }));
+
+  await run(win, 'document.getElementById("gear").click()');
+  await wait(2500);
+
+  const status = String(await run(win, 'document.getElementById("sumStatus").textContent'));
+  const warned = String(
+    await run(win, 'String(document.getElementById("sumStatus").classList.contains("warn"))'),
+  );
+  const after = {
+    原文件还在: existsSync(p),
+    挪到了unreadable: existsSync(`${p}.unreadable`),
+    界面文案: status,
+    用了警示样式: warned,
+  };
+  say("smoke-keydrop-after", JSON.stringify(after));
+
+  check("keydrop", !after.原文件还在, "解不开的密钥还留在原地 —— 每次读都会再失败一次");
+  check("keydrop", after.挪到了unreadable, "密钥被直接删了 —— 该挪到 .unreadable，留下「你确实存过」这个事实");
+  check("keydrop", status.length > 0, "界面一个字都没说");
+  check(
+    "keydrop",
+    status === t("sum.keyDropped"),
+    `界面说的不是「密钥解不开」那句：${status}`,
+  );
+  check("keydrop", warned === "true", "没有用警示样式 —— 那句话混在一堆灰字里看不见");
+
+  try {
+    unlinkSync(`${p}.unreadable`);
+  } catch {
+    /* 隔离目录，留着也无所谓 */
+  }
+}
+
 /** 快捷键与右键菜单的点击路径。两者都没有单元测试能覆盖到接线这一层。 */
 async function smokeKeys(win: BrowserWindow): Promise<void> {
   say(
@@ -1737,6 +1785,7 @@ export function attachSmoke(win: BrowserWindow, quit: (code: number) => void): v
       if (env("UPDATE")) await smokeUpdate(win, env("UPDATE")!);
       if (env("SUMEXPAND") === "1") await smokeSumExpand(win);
       if (env("LANG") === "en") await smokeLang(win);
+      if (env("KEYDROP") === "1") await smokeKeyDrop(win);
       if (env("HISTPERF") === "1") await smokeHistPerf(win);
       if (env("BELL") === "1") await smokeBell(win);
       if (env("END") === "1") {

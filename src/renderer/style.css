@@ -232,7 +232,11 @@ body { display: grid; grid-template-rows: var(--titlebar-h) 1fr; }
 .field > label { color: var(--c-fg); font-weight: 600; font-size: var(--t); }
 /* 不限定在 .field 下 —— harness 面板里的说明文字也要拿到这条 */
 .desc { color: var(--c-dim); font-size: var(--t-sm); margin-top: -4px; }
-.field .warn { color: var(--c-dim); font-size: var(--t-sm); }
+/* 警示用**满强度的正文色**，不用 --c-dim。
+   五套主题里都没有专门的警示色（`.ctx-item.danger` 那条已经立过这个规矩）——
+   而 --c-dim 是全站表示「次要 / 弱化」的灰，拿它表达「这里出事了」是反的：
+   周围的 .desc 本来就是这个灰，警告反而比正文更不显眼。 */
+.field .warn { color: var(--c-fg); font-size: var(--t-sm); }
 .field .warn[hidden] { display: none; }
 
 .seg {

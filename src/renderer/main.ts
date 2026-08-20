@@ -1007,12 +1007,21 @@ if (!agentory) {
     // 点完才告诉你要花多少，那不叫知情。单条价钱不需要知道总数，也就不会被异步结果盖掉。
     // 估算依据：实测载荷约 1200 输入 token，输出 50。2026-08-16 起改峰谷计费，故标日期。
     const per = (1200 * st.price.in + 50 * st.price.out) / 1e6;
-    // 顺序照 `verCheck`：**挡住你的那个原因排在最前面**，它压过「开着还是关着」那句话
-    $("sumStatus").textContent = !on
-      ? t("sum.offlineNote")
-      : !st.hasKey
-        ? t("sum.needKey")
-        : t("sum.cached", { n: st.cached, model: st.model, per: per.toFixed(4), date: st.price.checkedAt });
+    /**
+     * 顺序照 `verCheck`：**挡住你的那个原因排在最前面**，它压过「开着还是关着」那句话。
+     *
+     * `keyDropped` 排在**最前**，连 `!on` 都压过去 —— 密钥是不管开关开着关着都会
+     * 被读、被清掉的（`state()` 无条件调 `readKey()`）。如果只在开关打开时才说，
+     * 一个关着摘要的用户会在某天打开它时发现 key 没了，而现场早就没了。
+     */
+    $("sumStatus").classList.toggle("warn", st.keyDropped);
+    $("sumStatus").textContent = st.keyDropped
+      ? t("sum.keyDropped")
+      : !on
+        ? t("sum.offlineNote")
+        : !st.hasKey
+          ? t("sum.needKey")
+          : t("sum.cached", { n: st.cached, model: st.model, per: per.toFixed(4), date: st.price.checkedAt });
   }
 
   const loadSumState = (): Promise<void> => api.summaryState().then(renderSumState);

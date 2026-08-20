@@ -548,6 +548,10 @@ const DICT = {
     zh: "共 {bytes} 字节，为构造它读了 {kb} KB",
     en: "{bytes} bytes total; {kb} KB read to build it",
   },
+  "sum.keyDropped": {
+    zh: "之前保存的 API key 解不开了，已挪到 deepseek.key.unreadable —— 多半是 %APPDATA%\\agentory 里的 Local State 被换掉或删掉了（密文靠它解）。重填一把即可。",
+    en: "The saved API key could not be decrypted and was moved to deepseek.key.unreadable — most likely Local State in %APPDATA%\\agentory was replaced or deleted (the ciphertext is bound to it). Just enter a key again.",
+  },
   "sum.noKey": { zh: "还没有填 API key", en: "No API key yet" },
   "sum.alreadyRunning": { zh: "已经在跑了", en: "Already running" },
   "theme.badJson": {
