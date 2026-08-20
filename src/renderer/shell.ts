@@ -1,3 +1,4 @@
+import { t } from "../shared/i18n";
 import { NOTED, SHORTCUTS } from "./shortcuts";
 import type { ThemeColors, Theme } from "../shared/theme";
 
@@ -69,7 +70,7 @@ export function labelOf(s: { nativeTitle?: string; preview?: string }): string |
 export const shortId = (id: string | null): string => (id === null ? "" : id.slice(0, 6));
 
 /** 取不到第二行时说的话。**不能留空白** —— 空白看起来像还在加载。 */
-const NO_LABEL = "（没有可读的开头）";
+const NO_LABEL = (): string => t("side.noLabel");
 
 /**
  * 转义要插进 HTML 的文本。**属性值也必须转** ——
@@ -81,7 +82,7 @@ export const esc = (s: string): string =>
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
-  if (!el) throw new Error(`界面缺少 #${id}`);
+  if (!el) throw new Error(t("err.missingElement", { id }));
   return el as T;
 };
 
@@ -107,11 +108,18 @@ function pipColor(state: SessionView["state"], c: ThemeColors): string {
  * 「点击恢复」把这一行变成一个可执行的提议，和上方横幅的「上次留下 N 个会话」
  * 是同一件事的同一种说法 —— 以前那两处一个叫「留下」一个叫「未启动」。
  */
-const stateText: Record<SessionView["state"], string> = {
-  running: "工作中",
-  notStarted: "点击恢复",
-  stopped: "已停",
-};
+/**
+ * **必须是函数，不能是模块顶层的常量对象。**
+ *
+ * 常量在模块加载时求值一次，那会把文案冻在**启动那一刻的语言**上 ——
+ * 用户在设置里切成英文，侧栏状态列会固执地留着中文，而且只有重启才会好。
+ * 同一个坑对 `NO_LABEL` 也成立。凡是走 `t()` 的东西，都要在**用的时候**取。
+ */
+const stateText = (): Record<SessionView["state"], string> => ({
+  running: t("state.running"),
+  notStarted: t("state.notStarted"),
+  stopped: t("state.stopped"),
+});
 
 /**
  * 摘要那一行。默认被 CSS 砍成两行，点一下就地展开。
@@ -124,7 +132,7 @@ const stateText: Record<SessionView["state"], string> = {
  * 那种情况下点它就该和点这一行的其它地方一样（启动/切过去）。
  */
 const sumHtml = (key: string, label: string | null | undefined, expanded: ReadonlySet<string>): string => {
-  const text = label ?? NO_LABEL;
+  const text = label ?? NO_LABEL();
   const cls = `sum${label ? "" : " none"}${expanded.has(key) ? " expanded" : ""}`;
   const hook = label ? ` data-expand="${esc(key)}"` : "";
   return `<span class="${cls}"${hook} title="${esc(text)}">${esc(text)}</span>`;
@@ -152,11 +160,9 @@ export function renderSessions(
     // 跟着主区那块空态的分支走（`teNoAgent` 隐藏 = 装了），两处文案就不可能自相矛盾。
     const hasAgents = $("teNoAgent").hidden;
     $("tree").innerHTML = hasAgents
-      ? '<div class="side-empty">工作集是空的。<br>点上面的「新建会话」，' +
-        "或从「历史会话」里恢复一个 —— 加进来的会话会一直留在这里，关掉应用也不会丢。</div>"
-      : '<div class="side-empty">工作集是空的。<br>先装一个 agent —— 点上面的「新建会话」，' +
-        "那里有各家的官网链接。</div>";
-    $("runningCount").textContent = "0 个在跑";
+      ? `<div class="side-empty">${t("side.emptyHasAgents")}</div>`
+      : `<div class="side-empty">${t("side.emptyNoAgents")}</div>`;
+    $("runningCount").textContent = t("side.running", { n: 0 });
     return;
   }
 
@@ -177,8 +183,8 @@ export function renderSessions(
                 <span class="pip${v.needsAttention ? " bell" : ""}" style="background:${v.needsAttention ? c.accent : pipColor(v.state, c)}"></span>
                 <span class="agent">${v.agent}</span>
                 <span class="sid">${shortId(v.sessionId)}</span>
-                <span class="state">${v.needsAttention ? "需要你" : stateText[v.state]}</span>
-                <span class="end" data-end="${esc(v.key)}" title="结束会话：终止进程并移出工作集">✕</span>
+                <span class="state">${v.needsAttention ? t("state.attention") : stateText()[v.state]}</span>
+                <span class="end" data-end="${esc(v.key)}" title="${esc(t("side.endSession"))}">✕</span>
               </span>
               ${sumHtml(v.key, v.label, expanded)}
               ${v.state === "notStarted" ? `<span class="cmd">${esc(v.command)}</span>` : ""}
@@ -189,7 +195,7 @@ export function renderSessions(
     .join("");
 
   $("runningCount").textContent =
-    `${views.filter((v) => v.state === "running" && !v.ephemeral).length} 个在跑`;
+    t("side.running", { n: views.filter((v) => v.state === "running" && !v.ephemeral).length });
 }
 
 /**
@@ -209,12 +215,12 @@ export function renderFavorites(list: FavoriteView[], expanded: ReadonlySet<stri
   $("favTree").innerHTML = list
     .map(
       (v) => `<button class="sess fav${v.dead ? " dead" : ""}" data-fav="${esc(v.key)}" type="button"
-        title="${esc(v.cwd)}${v.dead ? "（工作目录已不存在）" : ""}">
+        title="${esc(v.cwd)}${v.dead ? esc(t("side.deadCwd")) : ""}">
         <span class="row1">
           <span class="agent">${v.agent}</span>
           <span class="sid">${shortId(v.sessionId)}</span>
           <span class="folder">${esc(folderOf(v.cwd))}</span>
-          <span class="end star" data-unfav="${esc(v.key)}" title="取消收藏">★</span>
+          <span class="end star" data-unfav="${esc(v.key)}" title="${esc(t("side.unfavorite"))}">★</span>
         </span>
         ${sumHtml(v.key, v.label, expanded)}
       </button>`,
@@ -330,8 +336,8 @@ export function renderHistory(list: HistoryRow[], total: number, shown: number):
     // 而这一屏还无条件挂着五个 agent 筛选 chip，会助攻那个错觉。
     $("histList").innerHTML =
       total === 0
-        ? '<div class="hist-empty">还没有任何历史会话 —— 五个 agent 都没有留下会话记录</div>'
-        : '<div class="hist-empty">没有匹配的会话 —— 换个搜索词或取消 agent 筛选</div>';
+        ? `<div class="hist-empty">${esc(t("hist.emptyNone"))}</div>`
+        : `<div class="hist-empty">${esc(t("hist.emptyFiltered"))}</div>`;
     return;
   }
   $("histList").innerHTML = list
@@ -341,15 +347,15 @@ export function renderHistory(list: HistoryRow[], total: number, shown: number):
       // 它们不能嵌套（HTML 不允许 button 套 button），所以外层是 div。
       (r, i) => `<div class="hist-row${r.dead ? " dead" : ""}" data-i="${i}" data-dead="${r.dead ? 1 : 0}">
         <button class="star" type="button" data-star="${i}"
-          aria-pressed="${r.starred}" title="${r.starred ? "取消收藏" : "收藏，留着以后用"}"
+          aria-pressed="${r.starred}" title="${esc(r.starred ? t("side.unfavorite") : t("hist.star"))}"
         >${r.starred ? "★" : "☆"}</button>
         <button class="hit" type="button"
-          ${r.dead ? 'aria-disabled="true" title="工作目录已不存在，无法恢复"' : ""}>
+          ${r.dead ? `aria-disabled="true" title="${esc(t("hist.deadCwd"))}"` : ""}>
           <span class="ag">${r.agent}</span>
           <span class="mid">
             <span class="cwd" title="${r.cwdFull}">${r.cwd}</span>
-            <span class="lbl${r.label ? "" : " none"}" title="${esc(r.label ?? NO_LABEL)}"
-              ><span class="sid">${r.sid}</span>${esc(r.label ?? NO_LABEL)}</span>
+            <span class="lbl${r.label ? "" : " none"}" title="${esc(r.label ?? NO_LABEL())}"
+              ><span class="sid">${r.sid}</span>${esc(r.label ?? NO_LABEL())}</span>
           </span>
           <span class="when">${r.when}${r.inexact ? ' <span class="flag">≈</span>' : ""}</span>
         </button>
@@ -389,8 +395,8 @@ export function toHistoryRow(
 ): HistoryRow {
   return {
     agent: s.agent,
-    cwd: esc(s.cwd ?? "（工作目录未知）"),
-    cwdFull: esc(s.cwd ?? "会话文件里读不到工作目录"),
+    cwd: esc(s.cwd ?? t("hist.cwdUnknown")),
+    cwdFull: esc(s.cwd ?? t("hist.cwdUnreadable")),
     label: summary?.trim() || labelOf(s),
     sid: shortId(s.sessionId),
     when: when(s.lastActivity),

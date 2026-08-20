@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join } from "node:path";
 import { app, ipcMain, nativeTheme, type BrowserWindow } from "electron";
 import builtinThemes from "../../shared/builtin-themes.json";
+import { langOfLocale, setLang, type Lang, type LangSetting } from "../../shared/i18n";
 import { loadThemes, type ModeSetting, type Theme } from "../../shared/theme";
 
 export interface ThemeState {
@@ -21,6 +22,13 @@ export interface ThemeState {
   termFontSize: number;
   /** `null` = 用内置的等宽字体栈。只影响终端，界面不给选（见 D-21）。 */
   termFontFamily: string | null;
+  /**
+   * 语言。**两个都要给出去**：
+   * - `language` 是用户选的那个，设置面板要按它高亮
+   * - `lang` 是解析之后的结果，界面要按它显示，而且「跟随系统」那一项得说清楚跟到了哪
+   */
+  language: LangSetting;
+  lang: Lang;
 }
 
 interface Settings {
@@ -50,6 +58,8 @@ interface Settings {
   termFontSize: number;
   /** 终端字体。`null` = 内置栈。 */
   termFontFamily: string | null;
+  /** 界面语言。`system` 跟随 `app.getLocale()`。 */
+  language: LangSetting;
 }
 
 /**
@@ -69,6 +79,7 @@ const DEFAULTS: Settings = {
   uiFontScale: UI_SCALE.def,
   termFontSize: TERM_SIZE.def,
   termFontFamily: null,
+  language: "system",
 };
 
 const settingsPath = (): string => join(app.getPath("userData"), "settings.json");
@@ -99,6 +110,10 @@ function readSettings(): Settings {
       termFontFamily: typeof raw.termFontFamily === "string" && raw.termFontFamily.trim() !== ""
         ? raw.termFontFamily
         : null,
+      language:
+        raw.language === "zh" || raw.language === "en" || raw.language === "system"
+          ? raw.language
+          : DEFAULTS.language,
     };
   } catch {
     // 没有设置文件、或文件坏了 —— 用默认值，不是错误
@@ -159,6 +174,7 @@ function readUserThemes(): { raw: unknown[]; warnings: string[] } {
  */
 function buildState(): ThemeState {
   const settings = readSettings();
+  const lang = resolveLang(settings.language);
   const user = readUserThemes();
   const loaded = loadThemes({ builtin: builtinThemes, user: user.raw });
   // 记住的主题可能来自一个已被删掉的用户主题文件 —— 回退到默认，不是崩溃
@@ -175,7 +191,23 @@ function buildState(): ThemeState {
     uiFontScale: settings.uiFontScale,
     termFontSize: settings.termFontSize,
     termFontFamily: settings.termFontFamily,
+    language: settings.language,
+    lang,
   };
+}
+
+/**
+ * 当前生效的语言。`system` 走 `app.getLocale()`。
+ *
+ * **主进程自己也要 `setLang`** —— 它抛出的错误信息是直接显示给用户的，
+ * 得在抛的那一刻就是对的语言（见 `shared/i18n.ts` 的注释）。
+ * 放在 `buildState` 里是因为那是唯一一处「读设置」的收口，
+ * 启动、切主题、改语言都会经过它，不会漏。
+ */
+function resolveLang(setting: LangSetting): Lang {
+  const l = setting === "system" ? langOfLocale(app.getLocale()) : setting;
+  setLang(l);
+  return l;
 }
 
 export function registerThemeIpc(getWindow: () => BrowserWindow | null): void {
@@ -200,6 +232,9 @@ export function registerThemeIpc(getWindow: () => BrowserWindow | null): void {
     if ("termFontFamily" in patch) {
       const f = patch.termFontFamily;
       settings.termFontFamily = typeof f === "string" && f.trim() !== "" ? f : null;
+    }
+    if (patch.language === "system" || patch.language === "zh" || patch.language === "en") {
+      settings.language = patch.language;
     }
     writeSettings(settings);
     const state = buildState();

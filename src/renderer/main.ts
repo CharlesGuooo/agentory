@@ -11,6 +11,8 @@ import { setupHarness } from "./harness";
 import { closeMenu, menuOpen, showMenu, type MenuItem } from "./menu";
 import { inTextField, resolve } from "./shortcuts";
 import type { AgentoryApi } from "../preload/index";
+import { setLang, t, type Lang } from "../shared/i18n";
+import { applyI18n } from "./i18n-dom";
 import { resolveVariant, toCssVars, toXtermTheme } from "../shared/theme";
 import {
   $,
@@ -99,8 +101,8 @@ const viewOfPane = (paneId: string): SessionView | undefined =>
 
 function colorsNow(): ReturnType<typeof toXtermTheme> | null {
   if (!theme) return null;
-  const t = theme.themes.find((x) => x.id === theme!.themeId) ?? theme.themes[0];
-  return t ? toXtermTheme(t[resolveVariant(theme.mode, theme.systemPrefersDark)]) : null;
+  const cur = theme.themes.find((x) => x.id === theme!.themeId) ?? theme.themes[0];
+  return cur ? toXtermTheme(cur[resolveVariant(theme.mode, theme.systemPrefersDark)]) : null;
 }
 
 /** 终端字体栈的内置默认。设置里选了具体字体时排在它前面，选不中还能退回来。 */
@@ -235,12 +237,27 @@ const labelOfView = (v: {
  */
 const expanded = new Set<string>();
 
+/**
+ * 已经刷过文案的那个语言。
+ *
+ * 语言同步放在 `paint()` 里，是因为**它是「主进程状态变了」的唯一收口** ——
+ * `theme = s` 在这个文件里有八处（启动、主题、明暗、字号、语言…），
+ * 挨个补 `setLang` 必漏，而它们之后都会走到这里。
+ * 用这个变量挡住重复：只有语言真的变了才去走那 89 个节点。
+ */
+let paintedLang: Lang | null = null;
+
 function paint(): void {
   if (!theme) return;
-  const t = theme.themes.find((x) => x.id === theme!.themeId) ?? theme.themes[0];
-  if (!t) return;
+  if (theme.lang !== paintedLang) {
+    paintedLang = theme.lang;
+    setLang(theme.lang);
+    applyI18n();
+  }
+  const curTheme = theme.themes.find((x) => x.id === theme!.themeId) ?? theme.themes[0];
+  if (!curTheme) return;
   const variant = resolveVariant(theme.mode, theme.systemPrefersDark);
-  const colors = t[variant];
+  const colors = curTheme[variant];
 
   for (const p of panes.values()) p.term.options.theme = toXtermTheme(colors);
   const root = document.documentElement;
@@ -258,12 +275,12 @@ function paint(): void {
   );
   // 一个终端都没有时才显示空态。有会话在跑还挂着"还没有会话在跑"是在撒谎。
   $("termEmpty").hidden = panes.size > 0;
-  renderThemeCards(theme.themes, t.id, variant, theme.warnings);
+  renderThemeCards(theme.themes, curTheme.id, variant, theme.warnings);
   // 「放进主题目录」得说清楚是哪个目录 —— 它在新机器上还不存在
-  $("themeDesc").textContent = `把自己的 JSON 放进 ${theme.themesDir} 即可新增`;
+  $("themeDesc").textContent = t("theme.dirHint", { dir: theme.themesDir });
   setModeButtons(theme.mode);
-  document.title = `Agentory — ${t.name}`;
-  selfCheck["theme"] = { id: t.id, variant, bg: colors.bg };
+  document.title = `Agentory — ${curTheme.name}`;
+  selfCheck["theme"] = { id: curTheme.id, variant, bg: colors.bg };
   selfCheck["workspace"] = {
     total: views.length,
     running: views.filter((v) => v.state === "running").length,
@@ -902,7 +919,7 @@ if (!agentory) {
     const n = restorable().filter(canRestore).length;
     const bar = $("resumeBar");
     bar.hidden = n === 0 || bannerDismissed;
-    if (!bar.hidden) $("resumeCount").textContent = String(n);
+    if (!bar.hidden) $("resumeText").textContent = t("side.resumeLeft", { n });
   }
   let bannerDismissed = false;
 

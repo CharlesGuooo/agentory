@@ -37,9 +37,9 @@
     <div class="body">
       <aside class="side">
         <div class="side-top">
-          <button class="btn-new" id="btnNew" type="button"><span>+</span>新建会话</button>
+          <button class="btn-new" id="btnNew" type="button"><span>+</span><i data-i18n="side.newSession"></i></button>
           <button class="btn-search" id="btnHistory" type="button">
-            <span>⌕</span>历史会话<span class="count" id="historyCount"></span>
+            <span>⌕</span><i data-i18n="side.history"></i><span class="count" id="historyCount"></span>
           </button>
         </div>
         <!--
@@ -48,9 +48,9 @@
           这条横幅只提供「一次全起」这一个额外能力，并且不挡路。
         -->
         <div class="resume-bar" id="resumeBar" hidden>
-          <span class="txt">上次留下 <b id="resumeCount">0</b> 个会话</span>
-          <button class="btn-ghost sm" id="resumeGo" type="button">全部恢复</button>
-          <button class="x" id="resumeSkip" type="button" aria-label="忽略">✕</button>
+          <span class="txt" id="resumeText"></span>
+          <button class="btn-ghost sm" id="resumeGo" type="button" data-i18n="side.resumeAll"></button>
+          <button class="x" id="resumeSkip" type="button" data-i18n-aria="side.resumeSkip">✕</button>
           <span class="note" id="resumeNote"></span>
         </div>
         <!--
@@ -64,14 +64,14 @@
         <!-- 收藏：与工作集正交，收藏不等于在跑。空的时候整块隐藏。 -->
         <div class="fav-wrap" id="favWrap" hidden>
           <div class="grp fav-head">
-            <span class="car">★</span>收藏<span class="count" id="favCount">0</span>
+            <span class="car">★</span><i data-i18n="side.favorites"></i><span class="count" id="favCount">0</span>
           </div>
           <div class="fav-tree" id="favTree"></div>
         </div>
         <div class="side-foot">
           <span id="runningCount">—</span>
-          <button class="gear" id="btnHarness" type="button" aria-label="Skills 与 MCP" title="Skills 与 MCP">⧉</button>
-          <button class="gear" id="gear" type="button" aria-label="设置" title="设置">⚙</button>
+          <button class="gear" id="btnHarness" type="button" data-i18n-aria="hx.title" data-i18n-title="hx.title">⧉</button>
+          <button class="gear" id="gear" type="button" data-i18n-aria="set.title" data-i18n-title="set.title">⚙</button>
         </div>
       </aside>
       <main class="term-host" id="terminal">
@@ -82,18 +82,14 @@
         -->
         <div class="term-empty" id="termEmpty">
           <div id="teReady">
-            <p class="te-title">还没有会话在跑</p>
-            <p class="te-line">点左上角<b>新建会话</b>开一个新的。</p>
-            <p class="te-line">
-              或者从<b>历史会话</b>里找回以前的 —— 你用过的 agent 会话都在里面，点开就接着聊。
-            </p>
+            <p class="te-title" data-i18n="empty.noSession"></p>
+            <p class="te-line" data-i18n-html="empty.newHint"></p>
+            <p class="te-line" data-i18n-html="empty.histHint"></p>
           </div>
           <div id="teNoAgent" hidden>
-            <p class="te-title">还没有检测到任何 agent</p>
-            <p class="te-line">
-              Agentory 是 Claude Code / Codex / OpenCode / Pi / Grok 这些 CLI 的工作台，<b>本身不含 agent</b>。
-            </p>
-            <p class="te-line">先装一个再回来 —— 点<b>新建会话</b>，那里有各家的官网链接。</p>
+            <p class="te-title" data-i18n="empty.noAgent"></p>
+            <p class="te-line" data-i18n-html="empty.noAgentWhat"></p>
+            <p class="te-line" data-i18n-html="empty.noAgentHow"></p>
           </div>
         </div>
       </main>
@@ -101,80 +97,68 @@
 
     <!-- 设置：弹窗。默认隐藏。 -->
     <div class="scrim" id="scrim" hidden>
-      <div class="panel" role="dialog" aria-modal="true" aria-label="设置">
+      <div class="panel" role="dialog" aria-modal="true" data-i18n-aria="set.title">
         <div class="panel-head">
-          <h2>设置 · 外观</h2>
-          <button class="close" id="settingsClose" type="button" aria-label="关闭">✕</button>
+          <h2 data-i18n="set.heading"></h2>
+          <button class="close" id="settingsClose" type="button" data-i18n-aria="set.close">✕</button>
         </div>
         <div class="panel-body">
           <section class="field">
-            <label id="modeLabel">明暗</label>
-            <p class="desc">与主题相互独立 —— 换明暗不会把你选的主题换掉</p>
+            <label id="modeLabel" data-i18n="set.mode"></label>
+            <p class="desc" data-i18n="set.modeDesc"></p>
             <div class="seg" id="modeSeg" role="group" aria-labelledby="modeLabel">
-              <button type="button" data-mode="system">跟随系统</button>
-              <button type="button" data-mode="light">浅色</button>
-              <button type="button" data-mode="dark">深色</button>
+              <button type="button" data-mode="system" data-i18n="set.modeSystem"></button>
+              <button type="button" data-mode="light" data-i18n="set.modeLight"></button>
+              <button type="button" data-mode="dark" data-i18n="set.modeDark"></button>
             </div>
           </section>
           <section class="field">
-            <label id="sumLabel">会话摘要</label>
+            <label id="sumLabel" data-i18n="sum.label"></label>
             <!--
               这一段原本只讲隐私（发什么、不发什么、上限多少），**从头到尾没提过要一把
               DeepSeek 的 key，更没说去哪拿** —— 于是用户打开开关，看到一个输入框，
               不知道该往里填什么、也不知道去哪弄。
             -->
-            <p class="desc">
-              把每条会话压成一句话，填进列表第二行 —— 半年前那条会话讲的是什么，一眼能看见。
-              <b>需要你自己的 DeepSeek API key</b>（我们不代收费，用多少是你和 DeepSeek 之间的事），
-              在 <button class="link" type="button" data-url="https://platform.deepseek.com/api_keys">platform.deepseek.com</button> 申请。
-            </p>
-            <p class="desc">
-              <b>生成摘要要把会话片段发给 DeepSeek</b> —— 内容会离开这台机器，所以默认关闭。
-              发送的只有<b>首条提问</b>和<b>过滤掉工具输出后的结尾片段</b>，上限 4 KB；
-              工具输出里藏着你的源码，一个字都不会发出去。
-              不确定的话，先点下面的「看看会发送什么」—— 那一步是纯本地的，不需要 key。
-            </p>
+            <p class="desc" data-i18n-html="sum.what"></p>
+            <p class="desc" data-i18n-html="sum.privacy"></p>
             <div class="row">
-              <button class="btn-ghost" id="sumToggle" type="button" aria-pressed="false">关闭</button>
+              <button class="btn-ghost" id="sumToggle" type="button" aria-pressed="false"></button>
               <span class="desc" id="sumStatus"></span>
             </div>
             <div class="row" id="sumKeyRow" hidden>
               <input id="sumKey" class="search" type="password" placeholder="DeepSeek API key"
                      autocomplete="off" spellcheck="false" />
-              <button class="btn-ghost" id="sumKeySave" type="button">保存</button>
+              <button class="btn-ghost" id="sumKeySave" type="button" data-i18n="sum.save"></button>
             </div>
             <div class="row" id="sumActions" hidden>
-              <button class="btn-ghost" id="sumPeek" type="button">看看会发送什么</button>
-              <button class="btn-ghost" id="sumRunMine" type="button">摘要工作集与收藏</button>
-              <button class="btn-ghost" id="sumRunAll" type="button">摘要全部历史</button>
-              <button class="btn-ghost" id="sumStop" type="button" hidden>停止</button>
+              <button class="btn-ghost" id="sumPeek" type="button" data-i18n="sum.peek"></button>
+              <button class="btn-ghost" id="sumRunMine" type="button" data-i18n="sum.runMine"></button>
+              <button class="btn-ghost" id="sumRunAll" type="button" data-i18n="sum.runAll"></button>
+              <button class="btn-ghost" id="sumStop" type="button" hidden data-i18n="sum.stop"></button>
             </div>
             <p class="desc" id="sumProgress"></p>
             <pre class="peek" id="sumPeekBox" hidden></pre>
           </section>
           <section class="field">
-            <label id="fontLabel">字号与字体</label>
-            <p class="desc">
-              <b>Ctrl+加号 / Ctrl+减号</b> 随时改终端字号，<b>Ctrl+0</b> 回默认 ——
-              和 Windows Terminal、VS Code 一致。
-            </p>
+            <label id="fontLabel" data-i18n="font.label"></label>
+            <p class="desc" data-i18n-html="font.hint"></p>
             <div class="row">
-              <span class="desc fixed-label">界面</span>
+              <span class="desc fixed-label" data-i18n="font.ui"></span>
               <div class="seg" id="uiFontSeg" role="group" aria-labelledby="fontLabel">
-                <button type="button" data-uiscale="0.9">小</button>
-                <button type="button" data-uiscale="1">标准</button>
-                <button type="button" data-uiscale="1.15">大</button>
-                <button type="button" data-uiscale="1.3">特大</button>
+                <button type="button" data-uiscale="0.9" data-i18n="font.uiS"></button>
+                <button type="button" data-uiscale="1" data-i18n="font.uiM"></button>
+                <button type="button" data-uiscale="1.15" data-i18n="font.uiL"></button>
+                <button type="button" data-uiscale="1.3" data-i18n="font.uiXL"></button>
               </div>
             </div>
             <div class="row">
-              <span class="desc fixed-label">终端字号</span>
-              <button class="btn-ghost sm" id="termFontDown" type="button" aria-label="调小">−</button>
+              <span class="desc fixed-label" data-i18n="font.termSize"></span>
+              <button class="btn-ghost sm" id="termFontDown" type="button" data-i18n-aria="font.smaller">−</button>
               <span class="desc num" id="termFontNow">13</span>
-              <button class="btn-ghost sm" id="termFontUp" type="button" aria-label="调大">+</button>
+              <button class="btn-ghost sm" id="termFontUp" type="button" data-i18n-aria="font.bigger">+</button>
             </div>
             <div class="row">
-              <span class="desc fixed-label">终端字体</span>
+              <span class="desc fixed-label" data-i18n="font.termFamily"></span>
               <select class="search" id="termFontFamily"></select>
             </div>
             <!--
@@ -188,37 +172,27 @@
           </section>
           <section class="field">
             <label>Agent</label>
-            <p class="desc">
-              本机装了哪些 agent、各是什么版本。读版本是<b>纯文件读</b> ——
-              不会启动任何 agent 进程。查最新版会联网，<b>发出去的只有包名</b>，
-              不含任何会话内容。
-              <b>更新永远由你自己执行</b>：这里只给出命令，不代跑。
-            </p>
+            <p class="desc" data-i18n-html="ver.what"></p>
             <div class="row">
-              <button class="btn-ghost" id="verToggle" type="button" aria-pressed="true">已开启</button>
+              <button class="btn-ghost" id="verToggle" type="button" aria-pressed="true"></button>
               <span class="desc" id="verStatus"></span>
-              <button class="btn-ghost" id="verCheck" type="button">现在检查</button>
+              <button class="btn-ghost" id="verCheck" type="button" data-i18n="ver.checkNow"></button>
             </div>
             <div class="agents" id="verRows"></div>
           </section>
           <section class="field">
-            <label>诊断</label>
-            <p class="desc">
-              Agentory 靠「五个 agent 的东西在这些路径上」工作。你那边一旦不成立
-              （配置目录被环境变量搬走、agent 是原生安装、只装了其中几个），
-              界面会显示成「你没有」而不是报错。<b>这一屏说清我们找了哪儿、找到没有。</b>
-              里面只有路径和数量，<b>不含任何文件内容或密钥</b>。
-            </p>
+            <label data-i18n="diag.label"></label>
+            <p class="desc" data-i18n-html="diag.what"></p>
             <div class="row">
-              <button class="btn-ghost" id="diagRun" type="button">收集诊断信息</button>
-              <button class="btn-ghost" id="diagCopy" type="button" hidden>复制</button>
+              <button class="btn-ghost" id="diagRun" type="button" data-i18n="diag.run"></button>
+              <button class="btn-ghost" id="diagCopy" type="button" hidden data-i18n="diag.copy"></button>
               <span class="desc" id="diagStatus"></span>
             </div>
             <pre class="peek" id="diagBox" hidden></pre>
           </section>
           <section class="field">
-            <label>主题</label>
-            <p class="desc" id="themeDesc">把自己的 JSON 放进主题目录即可新增</p>
+            <label data-i18n="set.theme"></label>
+            <p class="desc" id="themeDesc"></p>
             <div class="cards" id="cards"></div>
             <p class="warn" id="themeWarn" hidden></p>
           </section>
@@ -228,32 +202,32 @@
 
     <!-- 新建会话：选 agent + 选目录。默认隐藏。 -->
     <div class="scrim" id="newScrim" hidden>
-      <div class="panel" role="dialog" aria-modal="true" aria-label="新建会话">
+      <div class="panel" role="dialog" aria-modal="true" data-i18n-aria="new.title">
         <div class="panel-head">
-          <h2>新建会话</h2>
-          <button class="close" id="newClose" type="button" aria-label="关闭">✕</button>
+          <h2 data-i18n="new.title"></h2>
+          <button class="close" id="newClose" type="button" data-i18n-aria="set.close">✕</button>
         </div>
         <div class="panel-body">
           <section class="field">
-            <label id="newAgentLabel">选哪个 agent</label>
-            <p class="desc">只列出本机检测到的</p>
+            <label id="newAgentLabel" data-i18n="new.pickAgent"></label>
+            <p class="desc" data-i18n="new.pickAgentDesc"></p>
             <div class="chips" id="newAgents" role="group" aria-labelledby="newAgentLabel"></div>
           </section>
           <section class="field">
-            <label for="newCwd">工作目录</label>
-            <p class="desc">候选来自已有会话的真实目录</p>
+            <label for="newCwd" data-i18n="new.cwd"></label>
+            <p class="desc" data-i18n="new.cwdDesc"></p>
             <div class="row">
               <input
                 id="newCwd"
                 class="search"
                 type="text"
                 list="newCwdList"
-                placeholder="选一个候选，或点浏览，或直接粘路径"
+                data-i18n-ph="new.cwdPlaceholder"
                 autocomplete="off"
                 spellcheck="false"
               />
               <datalist id="newCwdList"></datalist>
-              <button class="btn-ghost" id="newBrowse" type="button">浏览…</button>
+              <button class="btn-ghost" id="newBrowse" type="button" data-i18n="new.browse"></button>
             </div>
           </section>
           <p class="warn" id="newError" hidden></p>
@@ -263,7 +237,7 @@
             而烂掉的安装命令比没有更糟（D-15 立过这条规矩）。
           -->
           <div class="no-agent" id="newNoAgent" hidden>
-            <p><b>一个 agent 都没检测到。</b>Agentory 是这些 CLI 的工作台，本身不含 agent —— 先装一个再回来。</p>
+            <p data-i18n-html="new.noAgent"></p>
             <div class="chips">
               <button class="btn-ghost btn-mini" type="button" data-url="https://code.claude.com/docs/en/quickstart">Claude Code</button>
               <button class="btn-ghost btn-mini" type="button" data-url="https://learn.chatgpt.com/docs/codex/cli">Codex</button>
@@ -271,27 +245,24 @@
               <button class="btn-ghost btn-mini" type="button" data-url="https://github.com/earendil-works/pi">Pi</button>
               <button class="btn-ghost btn-mini" type="button" data-url="https://x.ai/cli">Grok</button>
             </div>
-            <p class="desc">装好之后重开 Agentory。如果你确定装了却还是检测不到，去<b>设置 · 诊断</b>看我们找了哪些路径。</p>
+            <p class="desc" data-i18n-html="new.afterInstall"></p>
           </div>
         </div>
         <div class="panel-foot">
-          <button class="btn-primary" id="newGo" type="button" disabled>开始</button>
+          <button class="btn-primary" id="newGo" type="button" disabled data-i18n="new.go"></button>
         </div>
       </div>
     </div>
 
     <!-- 快捷键表。F1 打开。内容由 shortcuts.ts 那张表渲染 —— 表是唯一真源。 -->
     <div class="scrim" id="keysScrim" hidden>
-      <div class="panel" role="dialog" aria-modal="true" aria-label="快捷键">
+      <div class="panel" role="dialog" aria-modal="true" data-i18n-aria="keys.title">
         <div class="panel-head">
-          <h2>快捷键</h2>
-          <button class="close" id="keysClose" type="button" aria-label="关闭">✕</button>
+          <h2 data-i18n="keys.title"></h2>
+          <button class="close" id="keysClose" type="button" data-i18n-aria="set.close">✕</button>
         </div>
         <div class="panel-body">
-          <p class="desc">
-            应用级动作全部走 <b>Ctrl+Shift</b> —— 终端要用到 Ctrl+W（删词）、Ctrl+A/E（行首尾）、
-            Ctrl+C（中断），那些键原样留给 agent。
-          </p>
+          <p class="desc" data-i18n-html="keys.why"></p>
           <div class="keys" id="keysList"></div>
         </div>
       </div>
@@ -299,18 +270,18 @@
 
     <!-- 历史会话：独立视图，不进侧栏（D-5 / D-8）。默认隐藏。 -->
     <div class="scrim" id="histScrim" hidden>
-      <div class="panel panel-wide" role="dialog" aria-modal="true" aria-label="历史会话">
+      <div class="panel panel-wide" role="dialog" aria-modal="true" data-i18n-aria="hist.title">
         <div class="panel-head">
-          <h2>历史会话</h2>
+          <h2 data-i18n="hist.title"></h2>
           <span class="subtle" id="histSummary"></span>
-          <button class="close" id="histClose" type="button" aria-label="关闭">✕</button>
+          <button class="close" id="histClose" type="button" data-i18n-aria="set.close">✕</button>
         </div>
         <div class="hist-tools">
           <input
             id="histSearch"
             class="search"
             type="search"
-            placeholder="搜索工作目录或标题…"
+            data-i18n-ph="hist.searchPlaceholder"
             autocomplete="off"
           />
           <div class="chips" id="histAgents"></div>
@@ -330,18 +301,18 @@
       塞进 720px 单列纵向流会把「主题」推出首屏。
     -->
     <div class="scrim" id="hxScrim" hidden>
-      <div class="panel panel-wide" role="dialog" aria-modal="true" aria-label="Skills 与 MCP">
+      <div class="panel panel-wide" role="dialog" aria-modal="true" data-i18n-aria="hx.title">
         <div class="panel-head">
-          <h2>Skills 与 MCP</h2>
+          <h2 data-i18n="hx.title"></h2>
           <span class="subtle" id="hxSummary"></span>
-          <button class="close" id="hxClose" type="button" aria-label="关闭">✕</button>
+          <button class="close" id="hxClose" type="button" data-i18n-aria="set.close">✕</button>
         </div>
         <div class="hist-tools">
           <label class="hx-scope">
-            作用域
+            <i data-i18n="hx.scope"></i>
             <select id="hxScope" class="search"></select>
           </label>
-          <input id="hxSearch" class="search" type="search" placeholder="搜索 skill 或 MCP 名字…"
+          <input id="hxSearch" class="search" type="search" data-i18n-ph="hx.searchPlaceholder"
                  autocomplete="off" />
         </div>
         <!-- 状态条先于格子 —— 没有它，空格子会被读成「没配」而不是「读不到」 -->

@@ -13,6 +13,7 @@ import type { Workspace, WorkspaceEntry } from "../main/workspace/model";
 import type { RestoreOutcome } from "../main/workspace/restore";
 import type { ScanResult, Session } from "../main/sessions/types";
 import type { ThemeState } from "../main/theme/service";
+import type { LangSetting } from "../shared/i18n";
 import type { ModeSetting } from "../shared/theme";
 
 export interface SpawnRequest {
@@ -183,6 +184,8 @@ const api = {
     termFontSize?: number;
     /** `null` = 回到内置的等宽字体栈 */
     termFontFamily?: string | null;
+    /** 界面语言。`system` 跟随 `app.getLocale()` */
+    language?: LangSetting;
   }): Promise<ThemeState> =>
     ipcRenderer.invoke("theme:set", patch),
   onThemeChanged: (cb: (s: ThemeState) => void): (() => void) => {
