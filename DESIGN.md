@@ -1699,6 +1699,37 @@ getPreferredSystemLanguages() = ["en-CA", "zh-Hans-CN"]
 第三道**排除了会话摘要和终端内容** —— 那是用户自己的数据，不是我们的界面文案。
 一条中文会话在英文界面里当然还是中文，把它算成「没翻译」等于要求我们去翻译用户的数据。
 
+### D-U12 · 挪走 `Local State` 会销毁全部 `safeStorage` 密文（我干的）
+
+排查「装完窗口不显示」时，我把 userData 里的 Chromium 状态整批挪到备份目录，
+其中包括 **`Local State`**。Chromium 随后重建了一个新的 `Local State`，
+里面是**新的随机 OSCrypt 密钥**；后来清理时我把那个备份删了。
+
+结果：`deepseek.key` 里的密文再也解不开。**用户的 API key 不可恢复。**
+
+#### 三个连带的事实
+
+1. **`safeStorage` 的密文绑在 `Local State` 上，不是绑在二进制或 app 名上。**
+   实测：装好的 exe 读**自己的**密钥，只要换一个 userData 目录（哪怕把
+   `deepseek.key` 和 `Local State` 一起拷过去）就解不开。所以
+   **「拿 userData 副本测密钥」这个方法本身是错的** —— 我先前据此推断
+   「便携版读不了安装版的 key」，那个结论作废。
+
+2. **便携版与安装版共用 `%APPDATA%\agentory`**，因而共用同一把密钥 ——
+   实测跑一次便携版，`%APPDATA%` 下没有新增任何目录。README 那句
+   「可以互换」是对的。
+
+3. **解不开时 `readKey()` 会直接删掉密钥文件**（`summary/ipc.ts`，注释写的是
+   「换了机器就解不开，删掉让用户重填」）。**它一个字都不告诉用户。**
+   密钥凭空消失，而用户会以为是自己没保存 —— 这一点让上面这个事故
+   多花了三轮实验才定位到。**这是个该修的缺口**，记在这里。
+
+#### 教训
+
+**userData 里那些看起来像缓存的东西，不一定是缓存。**
+`GPUCache` / `Code Cache` 丢了会自己重建，`Local State` 丢了会带走所有密文。
+下次要挪，先分清哪些是派生数据、哪些是**唯一副本**。
+
 ### D-U9 · 本轮 logo + UI 没走 openspec
 
 前 7 刀都走了 openspec（proposal / design / tasks）。**logo + 图标 + UI 细节这一轮是照
