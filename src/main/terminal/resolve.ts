@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, normalize } from "node:path";
@@ -57,7 +58,7 @@ export function resolveCommand(name: string): ResolvedCommand {
       .map((s) => s.trim())
       .filter(Boolean);
   } catch {
-    throw new Error(`PATH 中找不到命令：${name}`);
+    throw new Error(t("err.notOnPath", { name }));
   }
 
   // 1) PATH 里直接就有 .exe（grok 是这种）

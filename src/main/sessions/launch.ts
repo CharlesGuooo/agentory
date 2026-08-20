@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 import { existsSync, statSync } from "node:fs";
 import type { AgentId, Session } from "./types";
 
@@ -46,7 +47,7 @@ export function folderSuggestions(sessions: Session[]): string[] {
  * 悄悄 `mkdir` 然后在里面开一个空会话，用户会以为自己进错了项目。
  */
 export function validateTarget(dir: string): void {
-  if (!dir.trim()) throw new Error("请先选择工作目录");
-  if (!existsSync(dir)) throw new Error(`目录不存在：${dir}`);
-  if (!statSync(dir).isDirectory()) throw new Error(`这个路径不是目录：${dir}`);
+  if (!dir.trim()) throw new Error(t("err.pickCwd"));
+  if (!existsSync(dir)) throw new Error(t("err.noDir", { dir }));
+  if (!statSync(dir).isDirectory()) throw new Error(t("err.notADir", { dir }));
 }

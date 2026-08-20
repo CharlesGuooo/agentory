@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { setLang, t } from "../shared/i18n";
 import { inTextField, resolve, SHORTCUTS, type KeyLike } from "./shortcuts";
 
 const k = (code: string, mods: Partial<KeyLike> = {}): KeyLike => ({
@@ -60,7 +61,11 @@ describe("快捷键解析", () => {
   it("表里每个动作都有展示文本，没有空条目", () => {
     for (const s of SHORTCUTS) {
       expect(s.keys.length).toBeGreaterThan(0);
-      expect(s.label.length).toBeGreaterThan(0);
+      // 表里存的是 key，文案在字典里 —— 两种语言都得有内容，否则这一屏会有空行
+      expect(t(s.labelKey).length, `${s.action} 的中文文案是空的`).toBeGreaterThan(0);
+      setLang("en");
+      expect(t(s.labelKey).length, `${s.action} 的英文文案是空的`).toBeGreaterThan(0);
+      setLang("zh");
     }
   });
 });

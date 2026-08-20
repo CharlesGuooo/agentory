@@ -103,6 +103,18 @@
           <button class="close" id="settingsClose" type="button" data-i18n-aria="set.close">✕</button>
         </div>
         <div class="panel-body">
+          <!--
+            语言放在最前面：一个英文用户打开设置面板，第一件想做的事就是把界面换掉，
+            让他先滚过主题和摘要两大段中文才找到它是反的。
+          -->
+          <section class="field">
+            <label id="langLabel" data-i18n="set.language"></label>
+            <div class="seg" id="langSeg" role="group" aria-labelledby="langLabel">
+              <button type="button" data-lang="system" id="langSystemBtn"></button>
+              <button type="button" data-lang="zh" data-i18n="set.langZh"></button>
+              <button type="button" data-lang="en" data-i18n="set.langEn"></button>
+            </div>
+          </section>
           <section class="field">
             <label id="modeLabel" data-i18n="set.mode"></label>
             <p class="desc" data-i18n="set.modeDesc"></p>

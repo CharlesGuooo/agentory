@@ -178,7 +178,14 @@ export function renderSessions(
         `<div class="grp">${esc(folder)}</div>` +
         items
           .map(
-            (v) => `<button class="sess${v.key === activeKey ? " on" : ""}" data-key="${esc(v.key)}" type="button">
+            /**
+             * `data-state` 是**给测试和 CSS 用的结构化状态**。
+             *
+             * 冒烟原来靠 `.state` 的文字等于「点击恢复」来找可恢复的成员 ——
+             * 那行文字既会因为改文案而失效（改过一次），也会因为切成英文而失效。
+             * 显示文本不该是行为契约。
+             */
+            (v) => `<button class="sess${v.key === activeKey ? " on" : ""}" data-key="${esc(v.key)}" data-state="${v.state}" type="button">
               <span class="row1">
                 <span class="pip${v.needsAttention ? " bell" : ""}" style="background:${v.needsAttention ? c.accent : pipColor(v.state, c)}"></span>
                 <span class="agent">${v.agent}</span>
@@ -290,14 +297,29 @@ export function renderShortcuts(): void {
   const row = (k: string, l: string, dim = false): string =>
     `<div class="krow${dim ? " dim" : ""}"><kbd>${esc(k)}</kbd><span>${esc(l)}</span></div>`;
   $("keysList").innerHTML =
-    SHORTCUTS.map((s) => row(s.keys, s.label)).join("") +
-    NOTED.map((s) => row(s.keys, s.label, true)).join("");
+    SHORTCUTS.map((s) => row(s.keys, t(s.labelKey))).join("") +
+    NOTED.map((s) => row(s.keys, t(s.labelKey), true)).join("");
 }
 
 export function setModeButtons(mode: string): void {
   for (const b of $("modeSeg").querySelectorAll("button")) {
     b.setAttribute("aria-pressed", String(b.dataset["mode"] === mode));
   }
+}
+
+/**
+ * 语言那一排。
+ *
+ * 「跟随系统」要**说清楚跟到了哪** —— 光写「跟随系统」，用户看到界面是中文时
+ * 分不清是系统语言就是中文、还是这个设置没生效。所以把解析结果写进括号里。
+ */
+export function setLangButtons(setting: string, resolved: "zh" | "en"): void {
+  for (const b of $("langSeg").querySelectorAll("button")) {
+    b.setAttribute("aria-pressed", String(b.dataset["lang"] === setting));
+  }
+  $("langSystemBtn").textContent = t("set.langSystem", {
+    lang: resolved === "zh" ? t("set.langZh") : t("set.langEn"),
+  });
 }
 
 export function openSettings(): void {

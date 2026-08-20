@@ -31,6 +31,7 @@ import {
   renderShortcuts,
   renderSessions,
   renderThemeCards,
+  setLangButtons,
   setModeButtons,
   settingsOpen,
   toHistoryRow,
@@ -279,6 +280,7 @@ function paint(): void {
   // 「放进主题目录」得说清楚是哪个目录 —— 它在新机器上还不存在
   $("themeDesc").textContent = t("theme.dirHint", { dir: theme.themesDir });
   setModeButtons(theme.mode);
+  setLangButtons(theme.language, theme.lang);
   document.title = `Agentory — ${curTheme.name}`;
   selfCheck["theme"] = { id: curTheme.id, variant, bg: colors.bg };
   selfCheck["workspace"] = {
@@ -323,7 +325,7 @@ const entryOfView = (v: SessionView): WorkspaceEntry => ({
 if (!agentory) {
   document.body.insertAdjacentHTML(
     "afterbegin",
-    '<p style="padding:12px;color:#e5646e">preload 桥未挂载 —— 无法起会话</p>',
+    `<p style="padding:12px;color:#e5646e">${t("err.noBridge")}</p>`,
   );
 } else {
   const api = agentory;
@@ -412,7 +414,9 @@ if (!agentory) {
     const v = viewOfPane(paneId);
     // 进程退出**不改变成员资格**（D-5）—— 只改运行状态
     if (v) v.state = "stopped";
-    panes.get(paneId)?.term.writeln(`\r\n\x1b[90m[会话已结束，退出码 ${info.exitCode}]\x1b[0m`);
+    panes
+      .get(paneId)
+      ?.term.writeln(`\r\n\x1b[90m${t("term.ended", { code: info.exitCode })}\x1b[0m`);
     exitWaiters.get(paneId)?.(info.exitCode);
     exitWaiters.delete(paneId);
     paint();
@@ -421,7 +425,7 @@ if (!agentory) {
     attach(viewOf(entryKey(entry)) ?? viewFromEntry(entry), spawned.id);
   });
   api.onWorkspaceProgress((done, total) => {
-    $("resumeNote").textContent = done < total ? `正在恢复 ${done}/${total}…` : "";
+    $("resumeNote").textContent = done < total ? t("side.restoring", { done, total }) : "";
   });
 
   void api.themeState().then((s) => {
@@ -461,6 +465,18 @@ if (!agentory) {
       void api.setTheme({ mode: m }).then((s) => {
         theme = s;
         paint();
+      });
+    }
+  });
+  $("langSeg").addEventListener("click", (e) => {
+    const l = (e.target as HTMLElement).dataset["lang"];
+    if (l === "system" || l === "zh" || l === "en") {
+      void api.setTheme({ language: l }).then((s) => {
+        theme = s;
+        // `paint()` 自己会发现 `lang` 变了并重刷全部文案（见 `paintedLang`）
+        paint();
+        refreshFavorites();
+        if (historyOpen()) refreshHistory();
       });
     }
   });
@@ -538,7 +554,7 @@ if (!agentory) {
 
   $("btnHistory").addEventListener("click", () => {
     openHistory();
-    $("histList").innerHTML = '<div class="hist-empty">正在扫描…</div>';
+    $("histList").innerHTML = `<div class="hist-empty">${t("hist.scanning")}</div>`;
     void api
       .listSessions()
       .then((r) => {
@@ -554,12 +570,12 @@ if (!agentory) {
          */
         $("histProblems").hidden = r.problems.length === 0;
         $("histProblems").textContent =
-          r.problems.length === 0 ? "" : `有 ${r.problems.length} 个来源没读出来：${r.problems.join("；")}`;
+          r.problems.length === 0 ? "" : t("hist.problems", { n: r.problems.length, list: r.problems.join("；") });
         refreshHistory();
       })
       // 不接住的话，弹窗会永远停在「正在扫描…」
       .catch((e: unknown) => {
-        $("histList").innerHTML = `<div class="hist-empty">扫描失败：${esc(cleanIpcError(String(e)))}</div>`;
+        $("histList").innerHTML = `<div class="hist-empty">${esc(t("hist.scanFailed", { err: cleanIpcError(String(e)) }))}</div>`;
       });
   });
   $("histClose").addEventListener("click", closeHistory);
@@ -575,18 +591,18 @@ if (!agentory) {
     refreshHistory();
   });
   $("histList").addEventListener("click", (e) => {
-    const t = e.target as HTMLElement;
+    const tgt = e.target as HTMLElement;
 
     // 星标与"点开会话"是两个动作。收藏不该顺手把会话起起来 —— 这也是
     // 它们在 DOM 上是两个可点区域而不是一个的原因。
-    const starIdx = t.closest<HTMLElement>(".star")?.dataset["star"];
+    const starIdx = tgt.closest<HTMLElement>(".star")?.dataset["star"];
     if (starIdx !== undefined) {
       e.stopPropagation();
       void toggleStar(shown[Number(starIdx)]);
       return;
     }
 
-    const row = t.closest<HTMLElement>(".hist-row");
+    const row = tgt.closest<HTMLElement>(".hist-row");
     if (!row || row.dataset["dead"] === "1") return;
     const s = shown[Number(row.dataset["i"])];
     if (!s || s.cwd === null) return;
@@ -635,7 +651,7 @@ if (!agentory) {
       .catch((err: Error) => {
         $("histList").insertAdjacentHTML(
           "afterbegin",
-          `<div class="hist-empty">恢复失败：${cleanIpcError(err.message).replace(/</g, "&lt;")}</div>`,
+          `<div class="hist-empty">${esc(t("hist.restoreFailed", { err: cleanIpcError(err.message) }))}</div>`,
         );
       })
       // 失败也要放开，否则这条会话在本次运行里永远起不来了
@@ -660,7 +676,7 @@ if (!agentory) {
   const paintAgentChips = (agents: string[]): void => {
     $("newAgents").innerHTML =
       agents.length === 0
-        ? '<span class="desc">没有检测到任何 agent</span>'
+        ? `<span class="desc">${t("new.noneDetected")}</span>`
         : agents
             .map(
               (a) =>
@@ -673,7 +689,7 @@ if (!agentory) {
     $("newScrim").hidden = false;
     showNewError(null);
     pickedAgent = null;
-    $("newAgents").innerHTML = '<span class="desc">正在检测…</span>';
+    $("newAgents").innerHTML = `<span class="desc">${t("new.detecting")}</span>`;
     syncNewGo();
     void api
       .launchOptions()
@@ -695,7 +711,7 @@ if (!agentory) {
       })
       // 不接住的话，弹窗会永远停在「正在检测…」
       .catch((e: unknown) => {
-        $("newAgents").innerHTML = `<span class="desc">检测失败：${esc(cleanIpcError(String(e)))}</span>`;
+        $("newAgents").innerHTML = `<span class="desc">${esc(t("new.detectFailed", { err: cleanIpcError(String(e)) }))}</span>`;
       });
   });
   /**
@@ -759,8 +775,7 @@ if (!agentory) {
      */
     if (viewOf(entryKey({ agent, sessionId: null, cwd, addedAt: "" }))) {
       showNewError(
-        `这个目录里已经有一个 ${agent} 会话了。agent 要等会话开始后才分配 id，` +
-          `在那之前同一个目录的同一个 agent 只能有一条 —— 先结束那一个，或者换个目录。`,
+        t("new.dupSession", { agent }),
       );
       return;
     }
@@ -780,7 +795,7 @@ if (!agentory) {
         attach(viewFromEntry(entry), r.id);
         await persist(entry);
       })
-      .catch((err: Error) => showNewError(`启动 ${agent} 失败：${cleanIpcError(err.message)}`));
+      .catch((err: Error) => showNewError(t("new.startFailed", { agent, err: cleanIpcError(err.message) })));
   });
 
   // ---------- 工作集：结束 / 启动未启动的 ----------
@@ -828,7 +843,7 @@ if (!agentory) {
     try {
       await api.workspaceAdd(entry);
     } catch (e) {
-      sideNote(`会话已经起来了，但没能记进工作集：${cleanIpcError((e as Error).message)}`);
+      sideNote(t("err.startedNotSaved", { err: cleanIpcError((e as Error).message) }));
     }
   };
 
@@ -839,8 +854,8 @@ if (!agentory) {
       bad.length === 0
         ? null
         : bad.length === 1
-          ? `没能启动：${cleanIpcError(bad[0]!.error ?? "")}`
-          : `${bad.length} 个没能启动：${cleanIpcError(bad[0]!.error ?? "")}`,
+          ? t("err.startFailed1", { err: cleanIpcError(bad[0]!.error ?? "") })
+          : t("err.startFailedN", { n: bad.length, err: cleanIpcError(bad[0]!.error ?? "") }),
     );
   };
 
@@ -885,20 +900,20 @@ if (!agentory) {
   };
 
   $("tree").addEventListener("click", (e) => {
-    const t = e.target as HTMLElement;
-    const expKey = t.dataset["expand"];
+    const tgt = e.target as HTMLElement;
+    const expKey = tgt.dataset["expand"];
     if (expKey !== undefined) {
       e.stopPropagation();
       toggleExpand(expKey);
       return;
     }
-    const endKey = t.dataset["end"];
+    const endKey = tgt.dataset["end"];
     if (endKey) {
       e.stopPropagation();
       void endSession(endKey);
       return;
     }
-    const k = t.closest<HTMLElement>(".sess")?.dataset["key"];
+    const k = tgt.closest<HTMLElement>(".sess")?.dataset["key"];
     if (k) activate(k);
   });
 
@@ -932,7 +947,7 @@ if (!agentory) {
       ($("resumeGo") as HTMLButtonElement).disabled = false;
       // 失败的说清楚，不静默消失
       $("resumeNote").textContent =
-        bad.length === 0 ? "" : `${bad.length} 个没能恢复：${cleanIpcError(bad[0]!.error ?? "")}`;
+        bad.length === 0 ? "" : t("err.restoreFailedN", { n: bad.length, err: cleanIpcError(bad[0]!.error ?? "") });
       bannerDismissed = bad.length === 0;
       renderBanner();
     });
@@ -963,7 +978,7 @@ if (!agentory) {
 
   function renderSumState(st: Awaited<ReturnType<typeof api.summaryState>>): void {
     const on = st.enabled;
-    ($("sumToggle") as HTMLButtonElement).textContent = on ? "已开启" : "关闭";
+    ($("sumToggle") as HTMLButtonElement).textContent = on ? t("sum.on") : t("sum.off");
     $("sumToggle").setAttribute("aria-pressed", String(on));
     $("sumKeyRow").hidden = !on;
     /**
@@ -984,9 +999,9 @@ if (!agentory) {
     }
     ($("sumKey") as HTMLInputElement).disabled = st.keyFromEnv;
     ($("sumKey") as HTMLInputElement).placeholder = st.keyFromEnv
-      ? "已由 DEEPSEEK_API_KEY 环境变量提供"
+      ? t("sum.keyFromEnv")
       : st.hasKey
-        ? "已保存（重新填写可覆盖）"
+        ? t("sum.keySaved")
         : "DeepSeek API key";
     // 费用写在**常驻**状态行里，不写在点完之后的进度行里 ——
     // 点完才告诉你要花多少，那不叫知情。单条价钱不需要知道总数，也就不会被异步结果盖掉。
@@ -994,10 +1009,10 @@ if (!agentory) {
     const per = (1200 * st.price.in + 50 * st.price.out) / 1e6;
     // 顺序照 `verCheck`：**挡住你的那个原因排在最前面**，它压过「开着还是关着」那句话
     $("sumStatus").textContent = !on
-      ? "关闭时完全离线，第二行退回「开头那句话」"
+      ? t("sum.offlineNote")
       : !st.hasKey
-        ? "还差一把 DeepSeek API key —— 填进上面那个框，下面两个按钮才能用"
-        : `已缓存 ${st.cached} 条 · ${st.model} · 每条约 $${per.toFixed(4)}（估算，价格查证于 ${st.price.checkedAt}）`;
+        ? t("sum.needKey")
+        : t("sum.cached", { n: st.cached, model: st.model, per: per.toFixed(4), date: st.price.checkedAt });
   }
 
   const loadSumState = (): Promise<void> => api.summaryState().then(renderSumState);
@@ -1025,28 +1040,28 @@ if (!agentory) {
     const f = favorites[0];
     const ref = v ? { agent: v.agent as AgentId, sessionId: v.sessionId! } : f ? { agent: f.agent, sessionId: f.sessionId } : null;
     if (!ref) {
-      $("sumPeekBox").textContent = "工作集和收藏都是空的，先加一条会话再看";
+      $("sumPeekBox").textContent = t("sum.peekEmpty");
       $("sumPeekBox").hidden = false;
       return;
     }
-    void api.summaryPreview(ref.agent, ref.sessionId).then((t) => {
-      $("sumPeekBox").textContent = t;
+    void api.summaryPreview(ref.agent, ref.sessionId).then((text) => {
+      $("sumPeekBox").textContent = text;
       $("sumPeekBox").hidden = false;
     });
   });
 
   function runSummaries(refs: { agent: AgentId; sessionId: string }[]): void {
     if (refs.length === 0) {
-      $("sumProgress").textContent = "没有需要摘要的会话";
+      $("sumProgress").textContent = t("sum.nothingToDo");
       return;
     }
-    $("sumProgress").textContent = `准备摘要 ${refs.length} 条…`;
+    $("sumProgress").textContent = t("sum.preparing", { n: refs.length });
     $("sumStop").hidden = false;
     void api.summaryRun(refs).then((r) => {
       $("sumStop").hidden = true;
       $("sumProgress").textContent = r.error
         ? r.error
-        : `完成：成功 ${r.ok} 条${r.failed ? `，失败 ${r.failed} 条` : ""}`;
+        : r.failed ? t("sum.doneMixed", { ok: r.ok, failed: r.failed }) : t("sum.doneOk", { ok: r.ok });
       void refreshSummaries();
       void loadSumState();
     });
@@ -1054,7 +1069,7 @@ if (!agentory) {
 
   // 全部历史是几百条串行，跑十几分钟且在花钱 —— 必须能中途叫停
   $("sumStop").addEventListener("click", () => {
-    $("sumProgress").textContent = "正在停…（当前这条跑完就停）";
+    $("sumProgress").textContent = t("sum.stopping");
     void api.summaryStop();
   });
 
@@ -1074,8 +1089,8 @@ if (!agentory) {
   });
   api.onSummaryProgress((p) => {
     $("sumProgress").textContent =
-      `正在摘要 ${p.done}/${p.total}` +
-      (p.failed ? ` · 失败 ${p.failed}` : "") +
+      t("sum.progress", { done: p.done, total: p.total }) +
+      (p.failed ? t("sum.progressFailed", { n: p.failed }) : "") +
       // 截断要看得出来是截断。原来是裸的 slice(0, 30)，**连省略号都不加** ——
       // 一句被砍掉的话看起来就像模型只写了这么多。
       (p.last ? ` · ${p.last.length > 30 ? `${p.last.slice(0, 30)}…` : p.last}` : "");
@@ -1085,7 +1100,7 @@ if (!agentory) {
 
   let diagText = "";
   $("diagRun").addEventListener("click", () => {
-    $("diagStatus").textContent = "正在收集…";
+    $("diagStatus").textContent = t("diag.collecting");
     void api
       .diagnosticsText()
       .then((d) => {
@@ -1094,16 +1109,16 @@ if (!agentory) {
         $("diagBox").hidden = false;
         $("diagCopy").hidden = false;
         // **读结构化的条数，不去数渲染文本里的 ⚠** —— 从渲染结果里数符号是脆的
-        $("diagStatus").textContent = d.problems > 0 ? `${d.problems} 个问题` : "没发现问题";
+        $("diagStatus").textContent = d.problems > 0 ? t("diag.problems", { n: d.problems }) : t("diag.noProblems");
         selfCheck["diag"] = { 字数: d.text.length, 问题: d.problems };
       })
       .catch((e: unknown) => {
-        $("diagStatus").textContent = `收集失败：${cleanIpcError(String(e))}`;
+        $("diagStatus").textContent = t("diag.collectFailed", { err: cleanIpcError(String(e)) });
       });
   });
   $("diagCopy").addEventListener("click", () => {
     api.copy(diagText);
-    $("diagStatus").textContent = "已复制，可以直接贴给维护者";
+    $("diagStatus").textContent = t("diag.copied");
   });
 
   // ---------- Skills 与 MCP（P2-b） ----------
@@ -1139,15 +1154,15 @@ if (!agentory) {
   /** 一行一个 agent。装了但读不出版本的照样列出来，写「版本未知」而不是消失。 */
   function renderVerRows(rows: Awaited<ReturnType<typeof api.agentsState>>["rows"]): void {
     if (rows.length === 0) {
-      $("verRows").innerHTML = '<p class="desc">没有检测到任何 agent</p>';
+      $("verRows").innerHTML = `<p class="desc">${t("ver.noAgents")}</p>`;
       return;
     }
     $("verRows").innerHTML = rows
       .map((r) => {
-        const cur = r.version ?? "版本未知";
+        const cur = r.version ?? t("ver.unknown");
         const to = r.hasUpdate ? ` <span class="ver-new">→ ${esc(r.latest!)}</span>` : "";
         const link = r.releasesUrl
-          ? `<button class="btn-ghost btn-mini" data-rel="${esc(r.releasesUrl)}">看更新说明</button>`
+          ? `<button class="btn-ghost btn-mini" data-rel="${esc(r.releasesUrl)}">${esc(t("ver.releaseNotes"))}</button>`
           : "";
         /**
          * 「更新」按钮 + 命令本身。
@@ -1156,8 +1171,8 @@ if (!agentory) {
          * 这个项目弄坏过一次 codex，让用户看得见我们要执行什么不是装饰。
          */
         const cmd = r.updateCommand && r.hasUpdate
-          ? `<button class="btn-ghost btn-mini" data-update="${esc(r.agent)}">更新</button>` +
-            `<code class="ver-cmd" data-copy="${esc(r.updateCommand)}" title="点击复制">${esc(r.updateCommand)}</code>`
+          ? `<button class="btn-ghost btn-mini" data-update="${esc(r.agent)}">${esc(t("ver.update"))}</button>` +
+            `<code class="ver-cmd" data-copy="${esc(r.updateCommand)}" title="${esc(t("ver.copyHint"))}">${esc(r.updateCommand)}</code>`
           : "";
         // 四个格子永远都在，空的也占位 —— 少一个格子后面的列就整体左移
         return `<div class="ver-row">
@@ -1172,21 +1187,23 @@ if (!agentory) {
 
   function renderVerState(st: Awaited<ReturnType<typeof api.agentsState>>): void {
     const on = st.checkEnabled;
-    ($("verToggle") as HTMLButtonElement).textContent = on ? "已开启" : "关闭";
+    ($("verToggle") as HTMLButtonElement).textContent = on ? t("sum.on") : t("sum.off");
     $("verToggle").setAttribute("aria-pressed", String(on));
     // 一个 agent 都没有时点它会「闪一下又回到还没查过」，看起来像坏了 —— 直接禁用
     const nothing = st.rows.length === 0;
     ($("verCheck") as HTMLButtonElement).disabled = !on || st.checking || nothing;
     const n = st.rows.filter((r) => r.hasUpdate).length;
     $("verStatus").textContent = nothing
-      ? "本机没有可检查的 agent"
+      ? t("ver.noCheckable")
       : !on
-      ? "关闭时只显示本机版本，完全离线"
+      ? t("ver.offlineNote")
       : st.checking
-        ? "正在查…"
+        ? t("ver.checking")
         : st.checkedAt === null
-          ? "还没查过最新版"
-          : `${n ? `${n} 个可更新 · ` : "都是最新的 · "}上次检查 ${new Date(st.checkedAt).toLocaleString()}`;
+          ? t("ver.neverChecked")
+          : n
+        ? t("ver.someUpdatable", { n, when: new Date(st.checkedAt).toLocaleString() })
+        : t("ver.allCurrent", { when: new Date(st.checkedAt).toLocaleString() });
     renderVerRows(st.rows);
   }
 
@@ -1197,7 +1214,7 @@ if (!agentory) {
     void api.agentsSetCheckEnabled(!on).then(renderVerState);
   });
   $("verCheck").addEventListener("click", () => {
-    $("verStatus").textContent = "正在查…";
+    $("verStatus").textContent = t("ver.checking");
     ($("verCheck") as HTMLButtonElement).disabled = true;
     void api.agentsCheck().then(renderVerState);
   });
@@ -1219,7 +1236,7 @@ if (!agentory) {
   function setGearDot(n: number): void {
     selfCheck["agents"] = { 可更新: n };
     $("gear").classList.toggle("has-update", n > 0);
-    $("gear").title = n > 0 ? `设置（${n} 个 agent 可更新）` : "设置";
+    $("gear").title = n > 0 ? t("set.titleUpdates", { n }) : t("set.title");
   }
 
   /**
@@ -1255,8 +1272,8 @@ if (!agentory) {
   function sessionMenu(v: SessionView): MenuItem[] {
     const starred = v.sessionId !== null && favorites.some((f) => f.sessionId === v.sessionId);
     const items: MenuItem[] = [];
-    if (v.paneId === null) items.push({ label: "启动", run: () => activate(v.key) });
-    else items.push({ label: "切到这个会话", run: () => show(v.key) });
+    if (v.paneId === null) items.push({ label: t("menu.start"), run: () => activate(v.key) });
+    else items.push({ label: t("menu.switchTo"), run: () => show(v.key) });
 
     /**
      * 这一行现在显示的是哪段字。**加收藏和「复制摘要」都用它** ——
@@ -1267,7 +1284,7 @@ if (!agentory) {
 
     if (v.sessionId !== null) {
       items.push({
-        label: starred ? "取消收藏" : "收藏",
+        label: starred ? t("side.unfavorite") : t("menu.favorite"),
         run: () => {
           const s = allSessions.find((x) => x.sessionId === v.sessionId);
           if (s) void toggleStar(s);
@@ -1302,13 +1319,13 @@ if (!agentory) {
      * 用户复制出来的是一句半截话，而界面上显示的又是另一段字。
      * 空的时候不给这一项 —— 一个复制出「（没有可读的开头）」的菜单项是噪音。
      */
-    if (sum !== null) items.push({ label: "复制摘要", run: () => api.copy(sum) });
-    items.push({ label: "在资源管理器中打开", run: () => void api.openFolder(v.cwd) });
-    items.push({ label: "复制工作目录", run: () => api.copy(v.cwd) });
+    if (sum !== null) items.push({ label: t("menu.copySummary"), run: () => api.copy(sum) });
+    items.push({ label: t("menu.openInExplorer"), run: () => void api.openFolder(v.cwd) });
+    items.push({ label: t("menu.copyCwd"), run: () => api.copy(v.cwd) });
     if (v.sessionId !== null) {
-      items.push({ label: "复制 session id", run: () => api.copy(v.sessionId!) });
+      items.push({ label: t("menu.copySessionId"), run: () => api.copy(v.sessionId!) });
     }
-    items.push({ label: "结束会话", danger: true, run: () => void endSession(v.key) });
+    items.push({ label: t("menu.endSession"), danger: true, run: () => void endSession(v.key) });
     return items;
   }
 
@@ -1326,13 +1343,13 @@ if (!agentory) {
     if (!f) return;
     e.preventDefault();
     showMenu(e.clientX, e.clientY, [
-      { label: "打开", run: () => ($("favTree").querySelector<HTMLElement>(`[data-fav="${CSS.escape(key!)}"]`) as HTMLElement | null)?.click() },
-      ...(f.label ? [{ label: "复制摘要", run: (): void => api.copy(f.label!) }] : []),
-      { label: "在资源管理器中打开", run: () => void api.openFolder(f.cwd) },
-      { label: "复制工作目录", run: () => api.copy(f.cwd) },
-      { label: "复制 session id", run: () => api.copy(f.sessionId) },
+      { label: t("menu.open"), run: () => ($("favTree").querySelector<HTMLElement>(`[data-fav="${CSS.escape(key!)}"]`) as HTMLElement | null)?.click() },
+      ...(f.label ? [{ label: t("menu.copySummary"), run: (): void => api.copy(f.label!) }] : []),
+      { label: t("menu.openInExplorer"), run: () => void api.openFolder(f.cwd) },
+      { label: t("menu.copyCwd"), run: () => api.copy(f.cwd) },
+      { label: t("menu.copySessionId"), run: () => api.copy(f.sessionId) },
       {
-        label: "取消收藏",
+        label: t("side.unfavorite"),
         danger: true,
         run: () => {
           void api.favoriteRemove(f.agent, f.sessionId).then((r) => {
@@ -1356,15 +1373,15 @@ if (!agentory) {
     e.preventDefault();
     const label = summaryOf(s.agent, s.sessionId) ?? labelOf(s);
     showMenu(e.clientX, e.clientY, [
-      ...(label ? [{ label: "复制摘要", run: (): void => api.copy(label) }] : []),
+      ...(label ? [{ label: t("menu.copySummary"), run: (): void => api.copy(label) }] : []),
       ...(s.cwd !== null
         ? [
-            { label: "在资源管理器中打开", run: (): void => void api.openFolder(s.cwd!) },
-            { label: "复制工作目录", run: (): void => api.copy(s.cwd!) },
+            { label: t("menu.openInExplorer"), run: (): void => void api.openFolder(s.cwd!) },
+            { label: t("menu.copyCwd"), run: (): void => api.copy(s.cwd!) },
           ]
         : []),
       ...(s.sessionId !== null
-        ? [{ label: "复制 session id", run: (): void => api.copy(s.sessionId!) }]
+        ? [{ label: t("menu.copySessionId"), run: (): void => api.copy(s.sessionId!) }]
         : []),
     ]);
   });
@@ -1400,12 +1417,12 @@ if (!agentory) {
     const usable = fontProbes.filter((f) => f.installed && f.mono);
     const sel = $("termFontFamily") as HTMLSelectElement;
     sel.innerHTML =
-      `<option value="">默认（Cascadia Mono → Consolas）</option>` +
+      `<option value="">${esc(t("font.default"))}</option>` +
       usable.map((f) => `<option value="${esc(f.name)}">${esc(f.name)}</option>`).join("");
     sel.value = theme.termFontFamily ?? "";
 
     $("termFontNote").textContent =
-      `本机可用的等宽字体 ${usable.length} 个（共探测 ${fontProbes.length} 个候选）。列表里只有真装了的 —— 选一个没装的会静默退回，看起来像没生效。`;
+      t("font.probeNote", { n: usable.length, total: fontProbes.length });
   }
 
   /**
@@ -1464,7 +1481,7 @@ if (!agentory) {
       // ② 停掉，并且**等它们真的死了**
       let stuck = 0;
       if (running.length > 0) {
-        say(`正在停掉 ${running.length} 个 ${agent} 会话…`);
+        say(t("upd.stopping", { n: running.length, agent }));
         for (const v of running) {
           const pane = v.paneId!;
           const wait = waitExit(pane);
@@ -1477,16 +1494,16 @@ if (!agentory) {
         paint();
       }
       // 没退干净的**带到最终那条消息里**。在循环里 say 会被第 ③ 步立刻覆盖，等于没说。
-      const stuckNote = stuck > 0 ? `（有 ${stuck} 个会话没在 15 秒内退干净）` : "";
+      const stuckNote = stuck > 0 ? t("upd.stuck", { n: stuck }) : "";
 
       // ③ 在一个看得见的终端里跑更新
       const [cols, rows] = dims();
       const started = await api.agentsStartUpdate(agent, cols, rows);
       if (!started.ok || !started.id) {
-        say(`起不了更新：${started.error ?? "未知原因"}`);
+        say(t("upd.cantStart", { err: started.error ?? t("upd.unknownReason") }));
         return;
       }
-      say(`正在更新 ${agent}：${started.display ?? ""}`);
+      say(t("upd.running", { agent, cmd: started.display ?? "" }));
       attach(
         {
           key: `更新|${agent}`,
@@ -1496,7 +1513,7 @@ if (!agentory) {
           paneId: null,
           state: "notStarted",
           command: started.display ?? "",
-          label: `更新 ${agent}`,
+          label: t("upd.tabLabel", { agent }),
           ephemeral: true,
         },
         started.id,
@@ -1513,9 +1530,12 @@ if (!agentory) {
       if (!moved) {
         say(
           (code === null
-            ? `${agent} 的更新还没结束（等超时了），版本仍是 ${started.before ?? "读不到"} —— 看那个标签页`
-            : `${agent} 的版本没变（仍是 ${started.before ?? "读不到"}），退出码 ${String(code)} —— 看那个标签页里说了什么`) +
-            stuckNote,
+            ? t("upd.timedOut", { agent, before: started.before ?? t("upd.unreadable") })
+            : t("upd.unchanged", {
+                agent,
+                before: started.before ?? t("upd.unreadable"),
+                code: String(code),
+              })) + stuckNote,
         );
         return;
       }
@@ -1535,17 +1555,17 @@ if (!agentory) {
       // ⑥ 把会话放回来
       let back = 0;
       if (entries.length > 0) {
-        say(`${agent} ${started.before ?? "?"} → ${now ?? "?"}，正在把 ${entries.length} 个会话放回来…`);
+        say(t("upd.restoring", { agent, before: started.before ?? "?", now: now ?? "?", n: entries.length }));
         const outs = await api.workspaceRestoreAll(entries, cols, rows);
         back = outs.filter((o) => o.ok).length;
       }
       say(
-        `${agent} 已更新：${started.before ?? "?"} → ${now ?? "?"}` +
-          (entries.length > 0 ? `，${back}/${entries.length} 个会话已恢复` : "") +
+        t("upd.done", { agent, before: started.before ?? "?", now: now ?? "?" }) +
+          (entries.length > 0 ? t("upd.doneRestored", { back, n: entries.length }) : "") +
           stuckNote,
       );
     } catch (e) {
-      say(`更新 ${agent} 出错：${cleanIpcError((e as Error).message)}`);
+      say(t("upd.error", { agent, err: cleanIpcError((e as Error).message) }));
     } finally {
       updating = false;
     }
@@ -1616,17 +1636,17 @@ if (!agentory) {
 
   // ---------- 收藏区块的点击 ----------
   $("favTree").addEventListener("click", (e) => {
-    const t = e.target as HTMLElement;
+    const tgt = e.target as HTMLElement;
 
     // 和工作集那边同一条：点摘要是展开，不是把这条收藏恢复成会话
-    const expKey = t.dataset["expand"];
+    const expKey = tgt.dataset["expand"];
     if (expKey !== undefined) {
       e.stopPropagation();
       toggleExpand(expKey);
       return;
     }
 
-    const unfav = t.closest<HTMLElement>("[data-unfav]")?.dataset["unfav"];
+    const unfav = tgt.closest<HTMLElement>("[data-unfav]")?.dataset["unfav"];
     if (unfav !== undefined) {
       e.stopPropagation();
       const f = favorites.find((x) => favoriteKey(x) === unfav);
@@ -1640,7 +1660,7 @@ if (!agentory) {
       return;
     }
 
-    const key = t.closest<HTMLElement>(".sess.fav")?.dataset["fav"];
+    const key = tgt.closest<HTMLElement>(".sess.fav")?.dataset["fav"];
     const f = key === undefined ? undefined : favorites.find((x) => favoriteKey(x) === key);
     if (!f || favMissing.has(key!)) return;
 
@@ -1690,14 +1710,14 @@ if (!agentory) {
   const bootWarnings: string[] = [];
   const noteBootWarnings = (): void => {
     if (bootWarnings.length === 0) return;
-    sideNote(`启动时有 ${bootWarnings.length} 条记录读不出来：${bootWarnings[0]!}`);
+    sideNote(t("boot.warnings", { n: bootWarnings.length, first: bootWarnings[0]! }));
   };
 
   // ---------- 启动：读收藏夹 ----------
   void api.favoritesState().then((st) => {
     favorites = st.favorites.sessions;
     for (const k of st.missingCwd) favMissing.add(k);
-    bootWarnings.push(...st.warnings.map((w) => `收藏夹：${w}`));
+    bootWarnings.push(...st.warnings.map((w) => t("boot.favPrefix", { msg: w })));
     selfCheck["favorites"] = {
       count: favorites.length,
       warnings: st.warnings.length,
@@ -1711,7 +1731,7 @@ if (!agentory) {
   void api.workspaceState().then((st) => {
     for (const e of st.workspace.sessions) views.push(viewFromEntry(e));
     for (const k of st.missingCwd) missingCwd.add(k);
-    bootWarnings.push(...st.warnings.map((w) => `工作集：${w}`));
+    bootWarnings.push(...st.warnings.map((w) => t("boot.wsPrefix", { msg: w })));
     selfCheck["workspaceLoaded"] = {
       entries: st.workspace.sessions.length,
       warnings: st.warnings.length,

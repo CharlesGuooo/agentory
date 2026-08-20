@@ -16,7 +16,7 @@ const sess = (id: string, at: string, agent: Session["agent"] = "claude"): Sessi
 const cached = (id: string, at: string, agent: Session["agent"] = "claude"): SummaryEntry => ({
   agent,
   sessionId: id,
-  text: "做了一件事",
+  text: { zh: "做了一件事", en: "did a thing" },
   model: "deepseek-v4-flash",
   at: "2026-08-01T00:00:00.000Z",
   sourceLastActivity: at,

@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 import { app, ipcMain, shell, type BrowserWindow } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -207,10 +208,10 @@ export function registerAgentsIpc(getWindow: () => BrowserWindow | null, checkEn
     "agents:startUpdate",
     (_e, agent: AgentId, cols: number, rows: number): UpdateStart => {
       const i = installedVersions().find((x) => x.agent === agent);
-      if (!i) return { ok: false, error: `没有检测到 ${agent}` };
+      if (!i) return { ok: false, error: t("ver.notDetected", { agent }) };
       const plan = updateOf(i);
       if (!plan) {
-        return { ok: false, error: `${agent} 不是通过 npm 装的，我们不知道该怎么更新它` };
+        return { ok: false, error: t("ver.notNpm", { agent }) };
       }
       try {
         const s = spawnManaged({ ...plan, cwd: homedir(), cols, rows }, getWindow);

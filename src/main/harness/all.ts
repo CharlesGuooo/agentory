@@ -8,6 +8,7 @@ import {
   readOpenCodeMcp,
   type McpResult,
 } from "./mcp";
+import { t } from "../../shared/i18n";
 import { readSkills, skillsRoot } from "./skills";
 import { ALL_AGENTS, type AgentId } from "../sessions/types";
 import type { HarnessMatrix, HarnessSource, McpRow, Scope, SkillRow } from "./types";
@@ -43,7 +44,7 @@ function mcpSources(): McpSource[] {
         entries: [],
         state: "unsupported" as const,
         // pi 的 README：`**No MCP.** Build CLI tools with READMEs (see Skills)`
-        note: "pi 不支持 MCP —— 它的文档建议改用 skills 包 CLI 工具",
+        note: t("hx.piNoMcp"),
       },
     },
     { agent: "grok" as const, path: grokMcpPath(), result: readGrokMcp() },
@@ -84,7 +85,7 @@ export function scanHarness(scope: Scope): HarnessMatrix {
       note: s.result.note,
     });
     if (s.result.state === "unreadable") {
-      problems.push(`[${s.agent}] MCP 配置读不动：${s.path}${s.result.note ? `（${s.result.note}）` : ""}`);
+      problems.push(t("hx.mcpUnreadable", { agent: s.agent, path: s.path, note: s.result.note ? `（${s.result.note}）` : "" }));
     }
   }
 
@@ -94,7 +95,7 @@ export function scanHarness(scope: Scope): HarnessMatrix {
     const root = skillsRoot(agent, scope);
     const r = readSkills(root);
     sources.push({ agent, kind: "skills", path: root, state: r.state, count: r.entries.length, note: null });
-    if (r.state === "unreadable") problems.push(`[${agent}] skills 目录读不动：${root}`);
+    if (r.state === "unreadable") problems.push(t("hx.skillsUnreadable", { agent, root }));
 
     for (const e of r.entries) {
       let row = skillRows.get(e.name);

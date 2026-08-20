@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { agentPaths } from "../paths";
 import { join } from "node:path";
@@ -45,7 +46,7 @@ export function scanClaude(root: string = defaultClaudeRoot()): ScanResult {
         // 侧链标记 = 子 agent 的 transcript。顶层不该出现，但规格要求识别它。
         const head = readHead(file, 3).lines.join("\n");
         if (/"isSidechain"\s*:\s*true/.test(head)) {
-          problems.push(`${name} 是子 agent 的 transcript（isSidechain），不计为会话`);
+          problems.push(t("scan.sidechain", { name }));
           continue;
         }
 
@@ -62,7 +63,7 @@ export function scanClaude(root: string = defaultClaudeRoot()): ScanResult {
           }),
         );
       } catch (e) {
-        problems.push(`${name} 解析失败：${(e as Error).message}`);
+        problems.push(t("scan.parseFailed", { name, msg: (e as Error).message }));
       }
     }
   }

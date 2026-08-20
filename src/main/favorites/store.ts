@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 import { loadEntryFile, saveEntryFile } from "../entryFile";
 import type { AgentId } from "../sessions/types";
 import type { Favorites, FavoriteEntry } from "./model";
@@ -10,18 +11,18 @@ export interface LoadFavoritesResult {
 }
 
 function parseFavorite(raw: unknown, index: number): FavoriteEntry {
-  if (typeof raw !== "object" || raw === null) throw new Error(`第 ${index + 1} 条不是对象`);
+  if (typeof raw !== "object" || raw === null) throw new Error(t("store.notObject", { i: index + 1 }));
   const o = raw as Record<string, unknown>;
   const { agent, sessionId, cwd, addedAt, label } = o;
 
   if (typeof agent !== "string" || !AGENTS.includes(agent as AgentId)) {
-    throw new Error(`第 ${index + 1} 条的 agent 不认识：${JSON.stringify(agent)}`);
+    throw new Error(t("store.badAgent", { i: index + 1, v: JSON.stringify(agent) }));
   }
   // 与工作集的关键差别：收藏一定指向具体会话，没有 id 就不是一条有效收藏（D-F3）
   if (typeof sessionId !== "string" || !sessionId) {
-    throw new Error(`第 ${index + 1} 条缺 sessionId —— 收藏必须指向具体会话`);
+    throw new Error(t("store.noSessionIdFav", { i: index + 1 }));
   }
-  if (typeof cwd !== "string" || !cwd) throw new Error(`第 ${index + 1} 条缺 cwd`);
+  if (typeof cwd !== "string" || !cwd) throw new Error(t("store.noCwd", { i: index + 1 }));
 
   return {
     agent: agent as AgentId,

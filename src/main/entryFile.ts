@@ -1,3 +1,4 @@
+import { t } from "../shared/i18n";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -71,7 +72,7 @@ export function loadEntryFile<T>(
     try {
       entries.push(parseOne(item, i));
     } catch (e) {
-      warnings.push(`跳过条目：${(e as Error).message}`);
+      warnings.push(t("store.skipped", { msg: (e as Error).message }));
     }
   });
 

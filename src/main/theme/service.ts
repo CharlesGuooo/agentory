@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join } from "node:path";
 import { app, ipcMain, nativeTheme, type BrowserWindow } from "electron";
 import builtinThemes from "../../shared/builtin-themes.json";
-import { langOfLocale, setLang, type Lang, type LangSetting } from "../../shared/i18n";
+import { langOfLocale, setLang, t, type Lang, type LangSetting } from "../../shared/i18n";
 import { loadThemes, type ModeSetting, type Theme } from "../../shared/theme";
 
 export interface ThemeState {
@@ -155,7 +155,7 @@ function readUserThemes(): { raw: unknown[]; warnings: string[] } {
     try {
       raw.push(JSON.parse(readFileSync(join(dir, f), "utf8")));
     } catch (e) {
-      warnings.push(`主题文件 ${f} 不是合法 JSON：${(e as Error).message}`);
+      warnings.push(t("theme.badJson", { f, msg: (e as Error).message }));
     }
   }
   return { raw, warnings };
@@ -178,7 +178,7 @@ function buildState(): ThemeState {
   const user = readUserThemes();
   const loaded = loadThemes({ builtin: builtinThemes, user: user.raw });
   // 记住的主题可能来自一个已被删掉的用户主题文件 —— 回退到默认，不是崩溃
-  const themeId = loaded.themes.some((t) => t.id === settings.themeId)
+  const themeId = loaded.themes.some((x) => x.id === settings.themeId)
     ? settings.themeId
     : DEFAULTS.themeId;
   return {
@@ -205,9 +205,35 @@ function buildState(): ThemeState {
  * 启动、切主题、改语言都会经过它，不会漏。
  */
 function resolveLang(setting: LangSetting): Lang {
-  const l = setting === "system" ? langOfLocale(app.getLocale()) : setting;
+  const l = setting === "system" ? langOfLocale(systemLocale()) : setting;
   setLang(l);
   return l;
+}
+
+/**
+ * 系统语言。
+ *
+ * 用 `getPreferredSystemLanguages()[0]` 而不是 `getLocale()`：前者是**用户自己排的
+ * 语言顺序**，后者是 Chromium 的界面 locale，两者可以不一样。
+ * 本机实测：`getLocale()` 是 `en-GB`，`getSystemLocale()` 是 `en-CA`，
+ * 而偏好列表是 `["en-CA","zh-Hans-CN"]` —— 一个把 Windows 显示语言设成英文、
+ * 但偏好里把中文排第一的用户，只有偏好列表能答对。
+ */
+function systemLocale(): string {
+  return app.getPreferredSystemLanguages()[0] ?? app.getLocale();
+}
+
+/**
+ * **在任何可能产生用户可见文案的东西之前，先把语言定下来。**
+ *
+ * 原来只有 `buildState()` 会 `setLang`，而工作集 / 收藏 / 摘要缓存的校验
+ * 发生在 `registerXxxIpc` 里 —— 那比第一次 `buildState()` 早。
+ * 结果是启动时的告警一半英文一半中文：
+ * `"4 records could not be read at startup: Favourites: 跳过条目：第 2 条的 agent 不认识"`
+ * 外层是渲染层按新语言拼的，内层是主进程用默认语言抛的。
+ */
+export function initLang(): Lang {
+  return resolveLang(readSettings().language);
 }
 
 export function registerThemeIpc(getWindow: () => BrowserWindow | null): void {

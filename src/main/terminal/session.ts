@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 import { existsSync, statSync } from "node:fs";
 import { spawn as ptySpawn, type IPty } from "node-pty";
 import { cleanEnv } from "./env";
@@ -32,7 +33,7 @@ export interface PtySession {
 export function spawnSession(opts: SpawnOptions): PtySession {
   // cwd 的检查放在最前面 —— 在碰 node-pty 之前失败，所以不可能留下僵尸 PTY。
   if (!existsSync(opts.cwd) || !statSync(opts.cwd).isDirectory()) {
-    throw new Error(`工作目录不存在或不是目录：${opts.cwd}`);
+    throw new Error(t("err.cwdGone", { dir: opts.cwd }));
   }
 
   let pty: IPty;
@@ -53,7 +54,7 @@ export function spawnSession(opts: SpawnOptions): PtySession {
   } catch (e) {
     // node-pty 的原始报错是 "Cannot create process, error code: 2"，不含命令名。
     // 包一层，把命令名带上，否则调用方拿到的信息不足以定位。
-    throw new Error(`无法启动命令 ${opts.command}：${(e as Error).message}`, { cause: e });
+    throw new Error(t("err.cannotStart", { cmd: opts.command, msg: (e as Error).message }), { cause: e });
   }
 
   return {

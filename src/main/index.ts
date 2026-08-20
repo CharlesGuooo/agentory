@@ -9,7 +9,7 @@ import { registerSessionsIpc } from "./sessions/ipc";
 import { registerSummaryIpc } from "./summary/ipc";
 import { attachSmoke, smokeEnabled } from "./smoke";
 import { killAllSessions, registerTerminalIpc } from "./terminal/ipc";
-import { registerThemeIpc, summariesEnabled, trayHintShown, versionCheckEnabled } from "./theme/service";
+import { initLang, registerThemeIpc, summariesEnabled, trayHintShown, versionCheckEnabled } from "./theme/service";
 import { registerWorkspaceIpc } from "./workspace/ipc";
 
 let mainWindow: BrowserWindow | null = null;
@@ -330,6 +330,13 @@ void app.whenReady().then(() => {
   // 归到 "Electron" 名下，任务栏继续显示 Electron 的默认图标 —— 即使 BrowserWindow
   // 已经传了 icon。这一行不是可选的润色，是图标能不能生效的前提。
   app.setAppUserModelId("com.agentory.app");
+
+  /**
+   * **语言要第一个定下来。** 下面每个 registerXxxIpc 都会在注册时读一次记录文件，
+   * 而那些校验失败的告警是直接显示给用户的 —— 晚一步定语言，
+   * 启动告警就会一半英文一半中文（见 `initLang` 的注释）。
+   */
+  initLang();
 
   registerTerminalIpc(() => mainWindow);
   registerThemeIpc(() => mainWindow);

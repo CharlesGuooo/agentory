@@ -233,8 +233,327 @@ const DICT = {
     en: "Drop your own JSON into {dir} to add one",
   },
 
+  // ---------- 右键菜单 ----------
+  "menu.start": { zh: "启动", en: "Start" },
+  "menu.switchTo": { zh: "切到这个会话", en: "Switch to this session" },
+  "menu.open": { zh: "打开", en: "Open" },
+  "menu.favorite": { zh: "收藏", en: "Add to favourites" },
+  "menu.copySummary": { zh: "复制摘要", en: "Copy summary" },
+  "menu.openInExplorer": { zh: "在资源管理器中打开", en: "Show in File Explorer" },
+  "menu.copyCwd": { zh: "复制工作目录", en: "Copy working directory" },
+  "menu.copySessionId": { zh: "复制 session id", en: "Copy session id" },
+  "menu.endSession": { zh: "结束会话", en: "End session" },
+
+  // ---------- 运行时状态与提示 ----------
+  "term.ended": { zh: "[会话已结束，退出码 {code}]", en: "[session ended, exit code {code}]" },
+  "side.restoring": { zh: "正在恢复 {done}/{total}…", en: "Restoring {done}/{total}…" },
+  "hist.scanning": { zh: "正在扫描…", en: "Scanning…" },
+  "hist.problems": {
+    zh: "有 {n} 个来源没读出来：{list}",
+    en: "{n} sources could not be read: {list}",
+  },
+  "hist.scanFailed": { zh: "扫描失败：{err}", en: "Scan failed: {err}" },
+  "hist.restoreFailed": { zh: "恢复失败：{err}", en: "Could not resume: {err}" },
+  "new.noneDetected": { zh: "没有检测到任何 agent", en: "No agents detected" },
+  "new.detecting": { zh: "正在检测…", en: "Detecting…" },
+  "new.detectFailed": { zh: "检测失败：{err}", en: "Detection failed: {err}" },
+  "new.dupSession": {
+    zh: "这个目录里已经有一个 {agent} 会话了。agent 要等会话开始后才分配 id，在那之前同一个目录的同一个 agent 只能有一条 —— 先结束那一个，或者换个目录。",
+    en: "There is already a {agent} session in this directory. An agent only gets a session id once the session has started, so until then there can be just one per agent per directory — end that one first, or pick another directory.",
+  },
+  "new.startFailed": { zh: "启动 {agent} 失败：{err}", en: "Could not start {agent}: {err}" },
+  "err.startedNotSaved": {
+    zh: "会话已经起来了，但没能记进工作集：{err}",
+    en: "The session started, but could not be saved to the workspace: {err}",
+  },
+  "err.startFailed1": { zh: "没能启动：{err}", en: "Could not start: {err}" },
+  "err.startFailedN": { zh: "{n} 个没能启动：{err}", en: "{n} could not start: {err}" },
+  "err.restoreFailedN": { zh: "{n} 个没能恢复：{err}", en: "{n} could not be resumed: {err}" },
+  "boot.warnings": {
+    zh: "启动时有 {n} 条记录读不出来：{first}",
+    en: "{n} records could not be read at startup: {first}",
+  },
+  "boot.favPrefix": { zh: "收藏夹：{msg}", en: "Favourites: {msg}" },
+  "boot.wsPrefix": { zh: "工作集：{msg}", en: "Workspace: {msg}" },
+
+  // ---------- 摘要状态 ----------
+  "sum.keyFromEnv": {
+    zh: "已由 DEEPSEEK_API_KEY 环境变量提供",
+    en: "Provided by the DEEPSEEK_API_KEY environment variable",
+  },
+  "sum.keySaved": { zh: "已保存（重新填写可覆盖）", en: "Saved (type a new one to replace it)" },
+  "sum.offlineNote": {
+    zh: "关闭时完全离线，第二行退回「开头那句话」",
+    en: "Fully offline when off — the second line falls back to the session's opening message",
+  },
+  "sum.needKey": {
+    zh: "还差一把 DeepSeek API key —— 填进上面那个框，下面两个按钮才能用",
+    en: "Still needs a DeepSeek API key — put one in the box above to enable the buttons below",
+  },
+  "sum.cached": {
+    zh: "已缓存 {n} 条 · {model} · 每条约 ${per}（估算，价格查证于 {date}）",
+    en: "{n} cached · {model} · about ${per} each (estimate; price checked {date})",
+  },
+  "sum.peekEmpty": {
+    zh: "工作集和收藏都是空的，先加一条会话再看",
+    en: "Workspace and favourites are both empty — add a session first",
+  },
+  "sum.nothingToDo": { zh: "没有需要摘要的会话", en: "Nothing to summarise" },
+  "sum.preparing": { zh: "准备摘要 {n} 条…", en: "Preparing {n} summaries…" },
+  "sum.doneOk": { zh: "完成：成功 {ok} 条", en: "Done: {ok} succeeded" },
+  "sum.doneMixed": {
+    zh: "完成：成功 {ok} 条，失败 {failed} 条",
+    en: "Done: {ok} succeeded, {failed} failed",
+  },
+  "sum.stopping": { zh: "正在停…（当前这条跑完就停）", en: "Stopping… (after the current one)" },
+  "sum.progress": { zh: "正在摘要 {done}/{total}", en: "Summarising {done}/{total}" },
+  "sum.progressFailed": { zh: " · 失败 {n}", en: " · {n} failed" },
+
+  // ---------- 诊断状态 ----------
+  "diag.collecting": { zh: "正在收集…", en: "Collecting…" },
+  "diag.problems": { zh: "{n} 个问题", en: "{n} problems" },
+  "diag.noProblems": { zh: "没发现问题", en: "Nothing wrong" },
+  "diag.collectFailed": { zh: "收集失败：{err}", en: "Could not collect: {err}" },
+  "diag.copied": {
+    zh: "已复制，可以直接贴给维护者",
+    en: "Copied — paste it straight to the maintainer",
+  },
+
+  // ---------- 版本 ----------
+  "ver.noAgents": { zh: "没有检测到任何 agent", en: "No agents detected" },
+  "ver.unknown": { zh: "版本未知", en: "version unknown" },
+  "ver.releaseNotes": { zh: "看更新说明", en: "Release notes" },
+  "ver.update": { zh: "更新", en: "Update" },
+  "ver.copyHint": { zh: "点击复制", en: "Click to copy" },
+  "ver.noCheckable": { zh: "本机没有可检查的 agent", en: "No agents here to check" },
+  "ver.offlineNote": {
+    zh: "关闭时只显示本机版本，完全离线",
+    en: "When off, only the installed version is shown — fully offline",
+  },
+  "ver.checking": { zh: "正在查…", en: "Checking…" },
+  "ver.neverChecked": { zh: "还没查过最新版", en: "Never checked for updates" },
+  "ver.someUpdatable": {
+    zh: "{n} 个可更新 · 上次检查 {when}",
+    en: "{n} can be updated · last checked {when}",
+  },
+  "ver.allCurrent": { zh: "都是最新的 · 上次检查 {when}", en: "All current · last checked {when}" },
+  "set.titleUpdates": {
+    zh: "设置（{n} 个 agent 可更新）",
+    en: "Settings ({n} agents can be updated)",
+  },
+
+  // ---------- 一键更新 ----------
+  "upd.stopping": { zh: "正在停掉 {n} 个 {agent} 会话…", en: "Stopping {n} {agent} sessions…" },
+  "upd.stuck": {
+    zh: "（有 {n} 个会话没在 15 秒内退干净）",
+    en: " ({n} sessions did not exit cleanly within 15s)",
+  },
+  "upd.cantStart": { zh: "起不了更新：{err}", en: "Could not start the update: {err}" },
+  "upd.unknownReason": { zh: "未知原因", en: "unknown reason" },
+  "upd.running": { zh: "正在更新 {agent}：{cmd}", en: "Updating {agent}: {cmd}" },
+  "upd.tabLabel": { zh: "更新 {agent}", en: "Update {agent}" },
+  "upd.timedOut": {
+    zh: "{agent} 的更新还没结束（等超时了），版本仍是 {before} —— 看那个标签页",
+    en: "The {agent} update has not finished (timed out); still at {before} — see that tab",
+  },
+  "upd.unchanged": {
+    zh: "{agent} 的版本没变（仍是 {before}），退出码 {code} —— 看那个标签页里说了什么",
+    en: "{agent}'s version did not change (still {before}), exit code {code} — see what that tab says",
+  },
+  "upd.restoring": {
+    zh: "{agent} {before} → {now}，正在把 {n} 个会话放回来…",
+    en: "{agent} {before} → {now}; restoring {n} sessions…",
+  },
+  "upd.done": { zh: "{agent} 已更新：{before} → {now}", en: "{agent} updated: {before} → {now}" },
+  "upd.doneRestored": {
+    zh: "，{back}/{n} 个会话已恢复",
+    en: ", {back}/{n} sessions restored",
+  },
+  "upd.error": { zh: "更新 {agent} 出错：{err}", en: "Error updating {agent}: {err}" },
+  "upd.unreadable": { zh: "读不到", en: "unreadable" },
+
+  // ---------- 终端字体 ----------
+  "font.default": {
+    zh: "默认（Cascadia Mono → Consolas）",
+    en: "Default (Cascadia Mono → Consolas)",
+  },
+  "font.probeNote": {
+    zh: "本机可用的等宽字体 {n} 个（共探测 {total} 个候选）。列表里只有真装了的 —— 选一个没装的会静默退回，看起来像没生效。",
+    en: "{n} usable monospace fonts on this machine (out of {total} probed). The list only contains fonts that are actually installed — picking a missing one silently falls back, which looks like nothing happened.",
+  },
+
+  // ---------- Skills 与 MCP ----------
+  "hx.global": { zh: "全局", en: "Global" },
+  "hx.noMcpSupport": { zh: "这个 agent 不支持 MCP", en: "This agent has no MCP support" },
+  "hx.unreadableConfig": { zh: "配置读不出来", en: "Config could not be read" },
+  "hx.unreadableDir": { zh: "目录读不出来", en: "Directory could not be read" },
+  "hx.multiDef": {
+    zh: "{n} 处定义 —— 我们不替你判断哪个生效",
+    en: "defined in {n} places — we do not guess which one wins",
+  },
+  "hx.disabled": { zh: "配置里写着 enabled = false", en: "the config says enabled = false" },
+  "hx.inlineSecret": {
+    zh: "配置里存着明文凭证：{names}",
+    en: "plaintext credentials in the config: {names}",
+  },
+  "hx.needsEnv": { zh: "需要环境变量：{names}", en: "needs environment variables: {names}" },
+  "hx.installed": { zh: "已装：{path}\n点一下丢进系统回收站", en: "Installed: {path}\nClick to move it to the Recycle Bin" },
+  "hx.copyFrom": { zh: "点一下从 {from} 复制过来", en: "Click to copy it from {from}" },
+  "hx.unsupported": { zh: "不支持", en: "not supported" },
+  "hx.unreadable": { zh: "读不出", en: "unreadable" },
+  "hx.none": { zh: "没有", en: "none" },
+  "hx.skillHint": {
+    zh: "点格子装 / 卸。卸载是丢进系统回收站，可以自己恢复",
+    en: "Click a cell to install or uninstall. Uninstalling moves it to the Recycle Bin, so you can put it back",
+  },
+  "hx.noSkills": { zh: "五个 agent 里一个 skill 都没有", en: "None of the five agents has any skills" },
+  "hx.noSkillMatch": { zh: "没有匹配的 skill —— 换个搜索词", en: "No skills match — try another search term" },
+  "hx.mcpReadOnly": {
+    zh: "只读 —— 改配置文件要处理竞态、格式保留和四套字段互译，这一刀不做",
+    en: "Read-only — editing the config files would mean races, format preservation and translating between four different schemas; not in this cut",
+  },
+  "hx.mcpProjectScope": {
+    zh: "项目级 MCP 只有 claude 和 grok 支持，这一刀不读",
+    en: "Only claude and grok support project-scoped MCP; not read in this cut",
+  },
+  "hx.server": { zh: "服务器", en: "Server" },
+  "hx.noMcp": { zh: "一个 MCP 服务器都没有配", en: "No MCP servers configured" },
+  "hx.noMcpMatch": { zh: "没有匹配的 MCP —— 换个搜索词", en: "No MCP servers match — try another search term" },
+  "hx.summary": { zh: "{s} 个 skill · {m} 个 MCP", en: "{s} skills · {m} MCP servers" },
+  "hx.summaryProblems": { zh: " · {n} 个问题", en: " · {n} problems" },
+  "hx.loading": { zh: "正在读…", en: "Reading…" },
+  "hx.loadFailed": { zh: "读不出来：{err}", en: "Could not read: {err}" },
+  "hx.actionFailed": { zh: "操作失败", en: "That did not work" },
+  "hx.actionFailedWith": { zh: "操作失败：{err}", en: "That did not work: {err}" },
+
+  // ---------- 快捷键表 ----------
+  "keys.new": { zh: "新建会话", en: "New session" },
+  "keys.close": { zh: "结束当前会话", en: "End current session" },
+  "keys.history": { zh: "历史会话", en: "History" },
+  "keys.settings": { zh: "设置", en: "Settings" },
+  "keys.next": { zh: "下一个会话", en: "Next session" },
+  "keys.prev": { zh: "上一个会话", en: "Previous session" },
+  "keys.jump": { zh: "跳到第 n 个会话", en: "Jump to session n" },
+  "keys.help": { zh: "这份快捷键表", en: "This shortcut list" },
+  "keys.fontUp": { zh: "终端字号放大", en: "Bigger terminal font" },
+  "keys.fontDown": { zh: "终端字号缩小", en: "Smaller terminal font" },
+  "keys.fontReset": { zh: "终端字号回默认", en: "Reset terminal font size" },
+  "keys.esc": { zh: "关闭当前弹窗 / 菜单", en: "Close the current dialog or menu" },
+  "keys.ctrlC": { zh: "中断 agent（原样交给终端）", en: "Interrupt the agent (passed straight to the terminal)" },
+  "keys.ctrlW": { zh: "删一个词（原样交给终端）", en: "Delete a word (passed straight to the terminal)" },
+
   // ---------- 错误 ----------
   "err.missingElement": { zh: "界面缺少 #{id}", en: "The UI is missing #{id}" },
+  "err.noBridge": {
+    zh: "preload 桥未挂载 —— 无法起会话",
+    en: "The preload bridge is not mounted — sessions cannot start",
+  },
+
+  /**
+   * 三份记录文件（工作集 / 收藏 / 摘要缓存）的校验文案是同一套，共用这几个 key。
+   * 它们会经由 `warnings` 显示在侧栏，所以属于「会弹给用户的错误」。
+   */
+  "store.notObject": { zh: "第 {i} 条不是对象", en: "Entry {i} is not an object" },
+  "store.badAgent": { zh: "第 {i} 条的 agent 不认识：{v}", en: "Entry {i} has an unknown agent: {v}" },
+  "store.noCwd": { zh: "第 {i} 条缺 cwd", en: "Entry {i} has no cwd" },
+  "store.noSessionIdFav": {
+    zh: "第 {i} 条缺 sessionId —— 收藏必须指向具体会话",
+    en: "Entry {i} has no sessionId — a favourite must point at a specific session",
+  },
+  "store.noSessionId": { zh: "第 {i} 条缺 sessionId", en: "Entry {i} has no sessionId" },
+  "store.badSessionId": { zh: "第 {i} 条的 sessionId 类型不对", en: "Entry {i} has a sessionId of the wrong type" },
+  "store.noText": { zh: "第 {i} 条缺 text", en: "Entry {i} has no text" },
+  "store.skipped": { zh: "跳过条目：{msg}", en: "Skipped an entry: {msg}" },
+
+  // ---------- 主进程：启动会话 ----------
+  "err.pickCwd": { zh: "请先选择工作目录", en: "Pick a working directory first" },
+  "err.noDir": { zh: "目录不存在：{dir}", en: "No such directory: {dir}" },
+  "err.notADir": { zh: "这个路径不是目录：{dir}", en: "That path is not a directory: {dir}" },
+  "err.cwdGone": {
+    zh: "工作目录不存在或不是目录：{dir}",
+    en: "The working directory is missing or is not a directory: {dir}",
+  },
+  "err.cannotStart": { zh: "无法启动命令 {cmd}：{msg}", en: "Could not start {cmd}: {msg}" },
+  "err.notOnPath": { zh: "PATH 中找不到命令：{name}", en: "Not found on PATH: {name}" },
+
+  // ---------- 主进程：扫描问题 ----------
+  "scan.failed": { zh: "[{agent}] 扫描失败：{msg}", en: "[{agent}] scan failed: {msg}" },
+  "scan.sessionFailed": { zh: "[{agent}] 扫描会话失败：{msg}", en: "[{agent}] could not scan sessions: {msg}" },
+  "scan.onPathButEmpty": {
+    zh: "[{agent}] PATH 里有它，但会话和 skills 都是 0 —— 配置目录可能不在我们找的位置",
+    en: "[{agent}] is on PATH but has zero sessions and zero skills — its config directory may not be where we look",
+  },
+  "scan.noConfigPaths": {
+    zh: "检测到了 agent，但七条配置路径一条都不存在 —— 家目录可能被重定向了",
+    en: "Agents were detected, but none of the seven config paths exists — the home directory may have been redirected",
+  },
+  "scan.parseFailed": { zh: "{name} 解析失败：{msg}", en: "{name} could not be parsed: {msg}" },
+  "scan.sidechain": {
+    zh: "{name} 是子 agent 的 transcript（isSidechain），不计为会话",
+    en: "{name} is a sub-agent transcript (isSidechain), not counted as a session",
+  },
+  "scan.noSummaryJson": { zh: "{dir} 缺 summary.json", en: "{dir} has no summary.json" },
+  "scan.summaryJsonFailed": {
+    zh: "{dir}/summary.json 解析失败：{msg}",
+    en: "{dir}/summary.json could not be parsed: {msg}",
+  },
+  "scan.emptyFile": { zh: "{name} 是空文件", en: "{name} is empty" },
+  "scan.badHeader": {
+    zh: "{name} 第一行不是 session header（type={type}）",
+    en: "{name}: the first line is not a session header (type={type})",
+  },
+  "scan.sessionParseFailed": { zh: "会话 {id} 解析失败：{msg}", en: "Session {id} could not be parsed: {msg}" },
+
+  // ---------- 主进程：harness ----------
+  "hx.piNoMcp": {
+    zh: "pi 不支持 MCP —— 它的文档建议改用 skills 包 CLI 工具",
+    en: "pi has no MCP support — its docs suggest wrapping CLI tools in a skill instead",
+  },
+  "hx.mcpUnreadable": { zh: "[{agent}] MCP 配置读不动：{path}{note}", en: "[{agent}] MCP config could not be read: {path}{note}" },
+  "hx.skillsUnreadable": { zh: "[{agent}] skills 目录读不动：{root}", en: "[{agent}] skills directory could not be read: {root}" },
+  "hx.compatOff": {
+    zh: "配置里 {list}，没有继承那边的 MCP",
+    en: "the config says {list}, so those MCP servers are not inherited",
+  },
+  "hx.noSkillMd": { zh: "源目录里没有 SKILL.md：{src}", en: "No SKILL.md in the source directory: {src}" },
+  "hx.pathEscape": { zh: "目标路径越界：{name}", en: "Target path escapes the destination: {name}" },
+  "hx.alreadyThere": { zh: "已经装了：{target}", en: "Already installed: {target}" },
+  "hx.copyFailed": { zh: "复制失败：{msg}", en: "Copy failed: {msg}" },
+  "hx.noSuchDir": { zh: "目录不存在：{path}", en: "No such directory: {path}" },
+  "hx.notASkill": {
+    zh: "这不是一个 skill 目录（没有 SKILL.md）：{path}",
+    en: "Not a skill directory (no SKILL.md): {path}",
+  },
+  "hx.outsideSkills": { zh: "不在任何已知的 skills 目录里：{path}", en: "Not inside any known skills directory: {path}" },
+  "hx.recycleFailed": { zh: "丢进回收站失败：{msg}", en: "Could not move it to the Recycle Bin: {msg}" },
+
+  // ---------- 主进程：版本与摘要 ----------
+  "ver.notDetected": { zh: "没有检测到 {agent}", en: "{agent} was not detected" },
+  "ver.notNpm": {
+    zh: "{agent} 不是通过 npm 装的，我们不知道该怎么更新它",
+    en: "{agent} was not installed through npm, so we do not know how to update it",
+  },
+  "sum.noContent": { zh: "模型没有返回内容", en: "The model returned nothing" },
+  "sum.truncated": {
+    zh: "模型写超了 {n} token 被截断，这次不采用",
+    en: "The model ran past {n} tokens and was cut off — not using this one",
+  },
+  "sum.badJson": {
+    zh: "模型没有按要求返回中英两段，这次不采用",
+    en: "The model did not return both languages as asked — not using this one",
+  },
+  "sum.timeout": { zh: "请求超时", en: "The request timed out" },
+  "sum.sessionNotFound": { zh: "找不到这条会话", en: "That session could not be found" },
+  "sum.payloadFoot": {
+    zh: "共 {bytes} 字节，为构造它读了 {kb} KB",
+    en: "{bytes} bytes total; {kb} KB read to build it",
+  },
+  "sum.noKey": { zh: "还没有填 API key", en: "No API key yet" },
+  "sum.alreadyRunning": { zh: "已经在跑了", en: "Already running" },
+  "theme.badJson": {
+    zh: "主题文件 {f} 不是合法 JSON：{msg}",
+    en: "Theme file {f} is not valid JSON: {msg}",
+  },
 
   // ---------- 设置：语言 ----------
   "set.language": { zh: "语言", en: "Language" },

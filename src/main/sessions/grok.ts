@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { agentPaths } from "../paths";
 import { join } from "node:path";
@@ -47,7 +48,7 @@ export function scanGrok(root: string = defaultGrokRoot()): ScanResult {
       const summaryPath = join(dir, "summary.json");
       try {
         if (!existsSync(summaryPath)) {
-          problems.push(`${sessionDir} 缺 summary.json`);
+          problems.push(t("scan.noSummaryJson", { dir: sessionDir }));
           continue;
         }
         const sum = JSON.parse(readFileSync(summaryPath, "utf8")) as GrokSummary;
@@ -69,7 +70,7 @@ export function scanGrok(root: string = defaultGrokRoot()): ScanResult {
           }),
         );
       } catch (e) {
-        problems.push(`${sessionDir}/summary.json 解析失败：${(e as Error).message}`);
+        problems.push(t("scan.summaryJsonFailed", { dir: sessionDir, msg: (e as Error).message }));
       }
     }
   }

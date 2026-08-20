@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 import { cpSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { isSkillDir } from "./skills";
@@ -35,21 +36,21 @@ export interface InstallOutcome {
  * 三道闸：源必须是真的 skill 目录、目标不能已经存在、目标必须落在给定的根里面。
  */
 export function installSkill(source: string, targetRoot: string, name: string): InstallOutcome {
-  if (!isSkillDir(source)) return { ok: false, error: `源目录里没有 SKILL.md：${source}` };
+  if (!isSkillDir(source)) return { ok: false, error: t("hx.noSkillMd", { src: source }) };
 
   const target = join(targetRoot, name);
   // 防路径穿越：name 来自渲染层，不能让它带着 ../ 跑出根目录
   if (!resolve(target).startsWith(resolve(targetRoot))) {
-    return { ok: false, error: `目标路径越界：${name}` };
+    return { ok: false, error: t("hx.pathEscape", { name }) };
   }
-  if (existsSync(target)) return { ok: false, error: `已经装了：${target}` };
+  if (existsSync(target)) return { ok: false, error: t("hx.alreadyThere", { target }) };
 
   try {
     mkdirSync(targetRoot, { recursive: true });
     // 整个目录复制 —— skill 可以带 scripts/ references/ assets/
     cpSync(source, target, { recursive: true });
   } catch (e) {
-    return { ok: false, error: `复制失败：${(e as Error).message}` };
+    return { ok: false, error: t("hx.copyFailed", { msg: (e as Error).message }) };
   }
   return { ok: true, path: target };
 }
@@ -65,12 +66,12 @@ export function installSkill(source: string, targetRoot: string, name: string): 
  * 2. 必须**正好**位于某个已知 skills 根的下一层 —— 防止渲染层传来任意路径
  */
 export function checkUninstall(path: string, allowedRoots: string[]): string | null {
-  if (!existsSync(path)) return `目录不存在：${path}`;
-  if (!isSkillDir(path)) return `这不是一个 skill 目录（没有 SKILL.md）：${path}`;
+  if (!existsSync(path)) return t("hx.noSuchDir", { path });
+  if (!isSkillDir(path)) return t("hx.notASkill", { path });
 
   const parent = resolve(dirname(path));
   if (!allowedRoots.some((r) => resolve(r) === parent)) {
-    return `不在任何已知的 skills 目录里：${path}`;
+    return t("hx.outsideSkills", { path });
   }
   return null;
 }

@@ -1,6 +1,7 @@
 import type { HarnessMatrix, Scope } from "../main/harness/types";
 import type { AgentId } from "../main/sessions/types";
 import type { AgentoryApi } from "../preload/index";
+import { t } from "../shared/i18n";
 import { $, cleanIpcError, closeHarness, esc, openHarness } from "./shell";
 
 /**
@@ -40,7 +41,7 @@ export function setupHarness(deps: HarnessDeps): void {
   function renderScopeSelect(): void {
     const sel = $("hxScope") as HTMLSelectElement;
     sel.innerHTML =
-      '<option value="">全局</option>' +
+      `<option value="">${esc(t("hx.global"))}</option>` +
       deps
         .scopes()
         .map((c) => `<option value="${esc(c.cwd)}" title="${esc(c.cwd)}">${esc(c.label)}</option>`)
@@ -55,9 +56,9 @@ export function setupHarness(deps: HarnessDeps): void {
   function mcpCell(row: HarnessMatrix["mcp"][number], agent: AgentId): string {
     const src = sourceOf(agent, "mcp");
     if (src?.state === "unsupported") {
-      return `<span class="hx-na" title="${esc(src.note ?? "这个 agent 不支持 MCP")}">—</span>`;
+      return `<span class="hx-na" title="${esc(src.note ?? t("hx.noMcpSupport"))}">—</span>`;
     }
-    if (src?.state === "unreadable") return '<span class="hx-unk" title="配置读不出来">?</span>';
+    if (src?.state === "unreadable") return `<span class="hx-unk" title="${esc(t("hx.unreadableConfig"))}">?</span>`;
 
     const es = row.byAgent[agent] ?? [];
     if (es.length === 0) return '<span class="hx-no">·</span>';
@@ -66,11 +67,11 @@ export function setupHarness(deps: HarnessDeps): void {
     const secret = es.some((e) => e.inlineSecrets.length > 0);
     const needs = [...new Set(es.flatMap((e) => [...e.envNames, ...e.headerNames]))];
     const tip = [
-      es.length > 1 ? `${es.length} 处定义 —— 我们不替你判断哪个生效` : "",
-      off ? "配置里写着 enabled = false" : "",
-      secret ? `配置里存着明文凭证：${es.flatMap((e) => e.inlineSecrets).join("、")}` : "",
+      es.length > 1 ? t("hx.multiDef", { n: es.length }) : "",
+      off ? t("hx.disabled") : "",
+      secret ? t("hx.inlineSecret", { names: es.flatMap((e) => e.inlineSecrets).join("、") }) : "",
       // 「为什么这个 MCP 在这台机器上不工作」的答案通常就是缺了某个环境变量
-      needs.length > 0 ? `需要环境变量：${needs.join("、")}` : "",
+      needs.length > 0 ? t("hx.needsEnv", { names: needs.join("、") }) : "",
       ...es.map((e) => e.source),
     ]
       .filter(Boolean)
@@ -84,11 +85,11 @@ export function setupHarness(deps: HarnessDeps): void {
   /** skill 格子 —— 可点。装的来源是任意一个已经有它的 agent。 */
   function skillCell(row: HarnessMatrix["skills"][number], agent: AgentId): string {
     const src = sourceOf(agent, "skills");
-    if (src?.state === "unreadable") return '<span class="hx-unk" title="目录读不出来">?</span>';
+    if (src?.state === "unreadable") return `<span class="hx-unk" title="${esc(t("hx.unreadableDir"))}">?</span>`;
 
     const hit = row.byAgent[agent];
     const from = AGENTS.map((a) => row.byAgent[a]).find((v) => v !== undefined)?.path ?? "";
-    const tip = hit ? `已装：${hit.path}\n点一下丢进系统回收站` : `点一下从 ${from} 复制过来`;
+    const tip = hit ? t("hx.installed", { path: hit.path }) : t("hx.copyFrom", { from });
     return `<button class="hx-box${hit ? " on" : ""}" type="button" role="checkbox"
       aria-checked="${hit ? "true" : "false"}" title="${esc(tip)}"
       data-skill="${esc(row.name)}" data-agent="${agent}"
@@ -111,11 +112,11 @@ export function setupHarness(deps: HarnessDeps): void {
         const cls = s.state === "ok" ? "ok" : s.state === "unreadable" ? "bad" : "dim";
         const n =
           s.state === "unsupported"
-            ? "不支持"
+            ? t("hx.unsupported")
             : s.state === "unreadable"
-              ? "读不出"
+              ? t("hx.unreadable")
               : s.state === "missing"
-                ? "没有"
+                ? t("hx.none")
                 : String(s.count);
         const what = s.kind === "mcp" ? "MCP" : "skills";
         return `<span class="hx-src ${cls}" title="${esc(s.note ?? s.path)}">${s.agent} ${what} <b>${n}</b></span>`;
@@ -149,28 +150,28 @@ export function setupHarness(deps: HarnessDeps): void {
     $("hxBody").innerHTML =
       section(
         "Skills",
-        "点格子装 / 卸。卸载是丢进系统回收站，可以自己恢复",
+        t("hx.skillHint"),
         skills.length > 0
           ? headRow("skill") + rowsOf(skills, skillCell as never)
           : matrix.skills.length === 0
-            ? '<p class="desc">五个 agent 里一个 skill 都没有</p>'
-            : '<p class="desc">没有匹配的 skill —— 换个搜索词</p>',
+            ? `<p class="desc">${t("hx.noSkills")}</p>`
+            : `<p class="desc">${t("hx.noSkillMatch")}</p>`,
       ) +
       section(
         "MCP",
-        "只读 —— 改配置文件要处理竞态、格式保留和四套字段互译，这一刀不做",
+        t("hx.mcpReadOnly"),
         scope.kind === "project"
-          ? '<p class="desc">项目级 MCP 只有 claude 和 grok 支持，这一刀不读</p>'
+          ? `<p class="desc">${t("hx.mcpProjectScope")}</p>`
           : mcp.length > 0
-            ? headRow("服务器") + rowsOf(mcp, mcpCell as never)
+            ? headRow(t("hx.server")) + rowsOf(mcp, mcpCell as never)
             : matrix.mcp.length === 0
-              ? '<p class="desc">一个 MCP 服务器都没有配</p>'
-              : '<p class="desc">没有匹配的 MCP —— 换个搜索词</p>',
+              ? `<p class="desc">${t("hx.noMcp")}</p>`
+              : `<p class="desc">${t("hx.noMcpMatch")}</p>`,
       );
 
     $("hxSummary").textContent =
-      `${matrix.skills.length} 个 skill · ${matrix.mcp.length} 个 MCP` +
-      (matrix.problems.length > 0 ? ` · ${matrix.problems.length} 个问题` : "");
+      t("hx.summary", { s: matrix.skills.length, m: matrix.mcp.length }) +
+      (matrix.problems.length > 0 ? t("hx.summaryProblems", { n: matrix.problems.length }) : "");
     deps.note({
       skills: matrix.skills.length,
       mcp: matrix.mcp.length,
@@ -179,7 +180,7 @@ export function setupHarness(deps: HarnessDeps): void {
   }
 
   function load(): void {
-    $("hxBody").innerHTML = '<p class="desc">正在读…</p>';
+    $("hxBody").innerHTML = `<p class="desc">${t("hx.loading")}</p>`;
     void api
       .harnessScan(scope)
       .then((m) => {
@@ -189,7 +190,7 @@ export function setupHarness(deps: HarnessDeps): void {
       // **没有这个 catch，一次意外 rejection 就让面板永远停在「正在读…」** ——
       // 那才是真正会「白屏」的入口，不是空数据
       .catch((e: unknown) => {
-        $("hxBody").innerHTML = `<p class="desc">读不出来：${esc(String(e))}</p>`;
+        $("hxBody").innerHTML = `<p class="desc">${esc(t("hx.loadFailed", { err: String(e) }))}</p>`;
       });
   }
 
@@ -231,7 +232,7 @@ export function setupHarness(deps: HarnessDeps): void {
     b.disabled = true;
     const done = (r: { ok: boolean; error?: string }): void => {
       busy = false;
-      if (!r.ok) $("hxSummary").textContent = r.error ?? "操作失败";
+      if (!r.ok) $("hxSummary").textContent = r.error ?? t("hx.actionFailed");
       load();
     };
     /**
@@ -244,9 +245,9 @@ export function setupHarness(deps: HarnessDeps): void {
     const failed = (e: unknown): void => {
       busy = false;
       b.disabled = false;
-      $("hxSummary").textContent = `操作失败：${cleanIpcError(
-        e instanceof Error ? e.message : String(e),
-      )}`;
+      $("hxSummary").textContent = t("hx.actionFailedWith", {
+        err: cleanIpcError(e instanceof Error ? e.message : String(e)),
+      });
     };
     if (path) void api.harnessUninstallSkill(path, scope).then(done).catch(failed);
     else void api.harnessInstallSkill(from!, agent as AgentId, scope, skill).then(done).catch(failed);

@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BrowserWindow } from "electron";
+import { t } from "../shared/i18n";
 import { livePids } from "./terminal/ipc";
 import { smokeClean, smokeDpapi } from "./smoke-clean";
 
@@ -325,9 +326,9 @@ async function smokeStartMember(win: BrowserWindow): Promise<void> {
       win,
       `(() => {
         const rows = [...document.querySelectorAll("#tree .sess")];
-        // 文案从「未启动」改成了「点击恢复」（shell.ts 的 stateText 有说明）。
-        // 这是全仓库唯一一处**行为上**依赖这个字面量的地方，其余命中都是注释。
-        const target = rows.find((r) => r.querySelector(".state").textContent === "点击恢复");
+        // 按 data-state 找，不看显示文字 —— 那行字改过一次文案，
+        // 现在还会跟着语言变。显示文本不是行为契约。
+        const target = rows.find((r) => r.dataset.state === "notStarted");
         if (!target) return "侧栏里没有可恢复的成员";
         target.click();
         ${double ? "target.click();" : ""}
@@ -1249,8 +1250,8 @@ async function smokeSumExpand(win: BrowserWindow): Promise<void> {
         const row = document.querySelector("#tree .sess");
         await navigator.clipboard.writeText("__哨兵__").catch(() => {});
         row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 120, clientY: 200 }));
-        const btn = [...document.querySelectorAll(".ctx-item")].find((b) => b.textContent.includes("复制摘要"));
-        if (!btn) return JSON.stringify({ err: "菜单里没有「复制摘要」" });
+        const btn = [...document.querySelectorAll(".ctx-item")].find((b) => b.textContent.includes(${JSON.stringify(t("menu.copySummary"))}));
+        if (!btn) return JSON.stringify({ err: "菜单里没有 " + ${JSON.stringify(t("menu.copySummary"))} });
         const r = btn.getBoundingClientRect();
         return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) });
       })()`,
@@ -1403,6 +1404,94 @@ async function smokeSumExpand(win: BrowserWindow): Promise<void> {
   check("sumexpand", favAfter.标签页 === d.标签页, "点收藏里的摘要多开了标签页");
 }
 
+/**
+ * `LANG=en`：切成英文，**用汉字正则扫 DOM**。
+ *
+ * 这是防「翻一半」的第三道，也是唯一能覆盖到**运行时拼出来的文案**的那道。
+ * 单测能证明字典是全的、`index.html` 里没有写死的中文，但证明不了
+ * `renderSessions()` 拼字符串时有没有漏掉一处 —— 那种漏只有真跑起来才看得见。
+ *
+ * 用正则扫，不逐条比对文案：逐条比对要维护一份和字典重复的期望值，
+ * 而且漏了哪条它自己也不知道。
+ */
+async function smokeLang(win: BrowserWindow): Promise<void> {
+  const scan = async (tag: string): Promise<string> => {
+    const raw = String(
+      await run(
+        win,
+        `(() => {
+          const CJK = /[\\u4e00-\\u9fa5]/;
+          const zones = { 侧栏: ".side", 设置: "#scrim", 主区空态: "#termEmpty", 标签栏: "#tabs" };
+          const out = {};
+          for (const [name, sel] of Object.entries(zones)) {
+            const root = document.querySelector(sel);
+            if (!root) { out[name] = "(没有这块)"; continue; }
+            const hits = [];
+            const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            let n;
+            while ((n = w.nextNode())) {
+              const s = n.textContent.trim();
+              // 终端里是 agent 的输出，不是我们的文案 —— 跳过
+              if (!s || !CJK.test(s)) continue;
+              // 终端里是 agent 的输出，不是我们的文案
+              if (n.parentElement?.closest(".xterm")) continue;
+              // 语言按钮上的「中文」是**故意**两种语言下都写「中文」的 ——
+              // 英文用户也得认得出哪一个是中文，写成 "Chinese" 反而更难认
+              if (n.parentElement?.closest("#langSeg")) continue;
+              // **会话摘要 / 开头那句是用户自己的内容，不是我们的界面文案。**
+              // 一条中文会话在英文界面里当然还是中文 —— 把它算成「没翻译」是错的，
+              // 那等于要求我们去翻译用户的数据。同理还有目录名、agent 名。
+              if (n.parentElement?.closest(".sum, .cmd, .grp, .cwd")) continue;
+              hits.push(s.slice(0, 40));
+            }
+            out[name] = hits;
+          }
+          out["语言按钮"] = [...document.querySelectorAll("#langSeg button")]
+            .map((b) => b.textContent + (b.getAttribute("aria-pressed") === "true" ? "*" : ""));
+          return JSON.stringify(out);
+        })()`,
+      ),
+    );
+    say(`smoke-lang-${tag}`, raw);
+    return raw;
+  };
+
+  // 先把设置面板打开 —— 它是文案最密集的一块，关着的话等于没扫
+  await run(win, 'document.getElementById("gear").click()');
+  await wait(600);
+
+  await run(win, 'window.agentory.setTheme({ language: "en" })');
+  await wait(1200);
+  const en = await scan("en");
+  const parsed = JSON.parse(en) as Record<string, string[] | string>;
+  for (const [zone, hits] of Object.entries(parsed)) {
+    if (zone === "语言按钮" || typeof hits === "string") continue;
+    check("lang", hits.length === 0, `切到英文之后「${zone}」里还有中文：${hits.join(" / ")}`);
+  }
+
+  // 切回来必须也生效 —— 只验单向等于放着回程不管
+  await run(win, 'window.agentory.setTheme({ language: "zh" })');
+  await wait(1200);
+  const zh = JSON.parse(await scan("zh")) as Record<string, string[] | string>;
+  const side = zh["侧栏"];
+  check(
+    "lang",
+    Array.isArray(side) && side.length > 0,
+    "切回中文之后侧栏一个汉字都没有 —— 说明切回去没生效",
+  );
+
+  const shots = env("LANG_SHOTS");
+  if (shots !== undefined) {
+    mkdirSync(shots, { recursive: true });
+    await run(win, 'window.agentory.setTheme({ language: "en" })');
+    await wait(900);
+    await shoot(win, shots, "设置-英文");
+    await run(win, 'window.agentory.setTheme({ language: "zh" })');
+    await wait(900);
+    await shoot(win, shots, "设置-中文");
+  }
+}
+
 /** 快捷键与右键菜单的点击路径。两者都没有单元测试能覆盖到接线这一层。 */
 async function smokeKeys(win: BrowserWindow): Promise<void> {
   say(
@@ -1454,6 +1543,8 @@ async function smokeKeys(win: BrowserWindow): Promise<void> {
    * 按钮在 click 派发之前就被移出 DOM，于是**所有菜单项用鼠标点都没反应**。
    *
    * 拿「复制工作目录」当探针：它的副作用可以从渲染层读回来（剪贴板），
+   * **标签从字典取，不写死中文** —— 这台机器上「跟随系统」解析成英文，
+   * 写死中文的查找会在英文界面下找不到那一项，测出来的「没反应」是假的。
    * 而且不改变任何状态 —— 不像「结束会话」那样跑一次就把环境弄没了。
    */
   /**
@@ -1473,8 +1564,8 @@ async function smokeKeys(win: BrowserWindow): Promise<void> {
         if (!row) return JSON.stringify({ err: "侧栏没有行" });
         await navigator.clipboard.writeText("__哨兵__").catch(() => {});
         row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 120, clientY: 200 }));
-        const btn = [...document.querySelectorAll(".ctx-item")].find((b) => b.textContent.includes("复制工作目录"));
-        if (!btn) return JSON.stringify({ err: "菜单里没有「复制工作目录」" });
+        const btn = [...document.querySelectorAll(".ctx-item")].find((b) => b.textContent.includes(${JSON.stringify(t("menu.copyCwd"))}));
+        if (!btn) return JSON.stringify({ err: "菜单里没有 " + ${JSON.stringify(t("menu.copyCwd"))} });
         const r = btn.getBoundingClientRect();
         return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) });
       })()`,
@@ -1645,6 +1736,7 @@ export function attachSmoke(win: BrowserWindow, quit: (code: number) => void): v
       if (env("ZOOM")) await smokeZoom(win);
       if (env("UPDATE")) await smokeUpdate(win, env("UPDATE")!);
       if (env("SUMEXPAND") === "1") await smokeSumExpand(win);
+      if (env("LANG") === "en") await smokeLang(win);
       if (env("HISTPERF") === "1") await smokeHistPerf(win);
       if (env("BELL") === "1") await smokeBell(win);
       if (env("END") === "1") {

@@ -25,9 +25,14 @@ const el = vi.hoisted(() => ({
 }));
 
 vi.mock("electron", () => ({
-  // `getLocale` 是 `language: "system"` 解析用的。给一个英文 locale，
-  // 这样「默认设置下解析成什么」这件事在测试里是确定的，不跟着跑测试的机器走。
-  app: { getPath: (): string => el.userData, getLocale: (): string => "en-US" },
+  // `getPreferredSystemLanguages` 是 `language: "system"` 解析用的（`getLocale` 是兜底）。
+  // 给一个固定的英文 locale，这样「默认设置下解析成什么」在测试里是确定的，
+  // 不跟着跑测试那台机器的系统语言走。
+  app: {
+    getPath: (): string => el.userData,
+    getLocale: (): string => "en-US",
+    getPreferredSystemLanguages: (): string[] => ["en-US"],
+  },
   ipcMain: {
     handle: (ch: string, fn: (e: unknown, ...a: unknown[]) => unknown): void => {
       el.handlers.set(ch, fn);

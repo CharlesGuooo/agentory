@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { agentPaths } from "../paths";
 import { join } from "node:path";
@@ -35,13 +36,13 @@ export function scanPi(root: string = defaultPiRoot()): ScanResult {
       try {
         const first = readHead(file, 1).lines[0];
         if (!first) {
-          problems.push(`${name} 是空文件`);
+          problems.push(t("scan.emptyFile", { name }));
           continue;
         }
         // 第一行很小，直接 JSON.parse —— 比正则加手工反转义可靠
         const header = JSON.parse(first) as PiHeader;
         if (header.type !== "session") {
-          problems.push(`${name} 第一行不是 session header（type=${String(header.type)}）`);
+          problems.push(t("scan.badHeader", { name, type: String(header.type) }));
           continue;
         }
 
@@ -59,7 +60,7 @@ export function scanPi(root: string = defaultPiRoot()): ScanResult {
           }),
         );
       } catch (e) {
-        problems.push(`${name} 解析失败：${(e as Error).message}`);
+        problems.push(t("scan.parseFailed", { name, msg: (e as Error).message }));
       }
     }
   }

@@ -1,3 +1,4 @@
+import { t } from "../shared/i18n";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { BrowserWindow } from "electron";
@@ -266,5 +267,9 @@ export async function smokeClean(
     main.有agent || !结论.includes("没发现问题"),
     `一个 agent 都没有，诊断却说「${结论}」`,
   );
-  check("clean", main.侧栏.includes("工作集是空的") || main.有agent, `侧栏文案：${main.侧栏}`);
+    // **拿字典比，不写死中文** —— 这台机器上「跟随系统」解析成英文（实测
+  // getPreferredSystemLanguages 是 ["en-CA","zh-Hans-CN"]），写死中文的断言
+  // 会在一台英文机器上凭空翻红，而它本来测的是「空态文案有没有出来」。
+  const emptyCopy = t("side.emptyNoAgents").replace(/<[^>]+>/g, "").slice(0, 12);
+  check("clean", main.侧栏.includes(emptyCopy) || main.有agent, `侧栏文案：${main.侧栏}`);
 }

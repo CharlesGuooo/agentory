@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 import { existsSync } from "node:fs";
 import { previewOf } from "./preview";
 import type { AgentId, ScanResult, Session } from "./types";
@@ -37,7 +38,7 @@ export function scanAll(scanners: Scanner[]): ScanResult {
       }
       for (const p of r.problems) problems.push(`[${agent}] ${p}`);
     } catch (e) {
-      problems.push(`[${agent}] 扫描失败：${(e as Error).message}`);
+      problems.push(t("scan.failed", { agent, msg: (e as Error).message }));
     }
   }
 

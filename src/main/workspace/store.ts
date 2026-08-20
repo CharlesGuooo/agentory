@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 import { loadEntryFile, saveEntryFile } from "../entryFile";
 import type { AgentId } from "../sessions/types";
 import type { Workspace, WorkspaceEntry } from "./model";
@@ -11,18 +12,18 @@ export interface LoadResult {
 }
 
 function parseEntry(raw: unknown, index: number): WorkspaceEntry {
-  if (typeof raw !== "object" || raw === null) throw new Error(`第 ${index + 1} 条不是对象`);
+  if (typeof raw !== "object" || raw === null) throw new Error(t("store.notObject", { i: index + 1 }));
   const o = raw as Record<string, unknown>;
   const { agent, sessionId, cwd, addedAt, label } = o;
 
   if (typeof agent !== "string" || !AGENTS.includes(agent as AgentId)) {
-    throw new Error(`第 ${index + 1} 条的 agent 不认识：${JSON.stringify(agent)}`);
+    throw new Error(t("store.badAgent", { i: index + 1, v: JSON.stringify(agent) }));
   }
   // sessionId 允许为 null —— 新建的会话在 spawn 那一刻还没有 id
   if (sessionId !== null && sessionId !== undefined && typeof sessionId !== "string") {
-    throw new Error(`第 ${index + 1} 条的 sessionId 类型不对`);
+    throw new Error(t("store.badSessionId", { i: index + 1 }));
   }
-  if (typeof cwd !== "string" || !cwd) throw new Error(`第 ${index + 1} 条缺 cwd`);
+  if (typeof cwd !== "string" || !cwd) throw new Error(t("store.noCwd", { i: index + 1 }));
 
   return {
     agent: agent as AgentId,

@@ -1,3 +1,4 @@
+import { t } from "../shared/i18n";
 import { app, ipcMain } from "electron";
 import { readSkills, skillsRoot } from "./harness/skills";
 import { agentPaths, type Resolved } from "./paths";
@@ -94,14 +95,14 @@ export function collectDiagnostics(): Diagnostics {
       sessions = got?.sessions.length ?? 0;
       for (const x of got?.problems ?? []) problems.push(`[${agent}] ${x}`);
     } catch (e) {
-      problems.push(`[${agent}] 扫描会话失败：${(e as Error).message}`);
+      problems.push(t("scan.sessionFailed", { agent, msg: (e as Error).message }));
     }
     const skills = readSkills(skillsRoot(agent, { kind: "global" })).entries.length;
 
     // **装了却一条会话都没有** —— 多半是配置目录不在我们找的地方。
     // 这正是那种「看起来一切正常」的失败，值得主动说出来。
     if (exe !== null && sessions === 0 && skills === 0) {
-      problems.push(`[${agent}] PATH 里有它，但会话和 skills 都是 0 —— 配置目录可能不在我们找的位置`);
+      problems.push(t("scan.onPathButEmpty", { agent }));
     }
     return { agent, exe, via, sessions, skills };
   });
@@ -121,7 +122,7 @@ export function collectDiagnostics(): Diagnostics {
   }
   // 装了但七条路径一条都不成立 —— 多半是配置目录整体被搬走了
   if (agents.some((a) => a.exe !== null) && paths.every((r) => !r.found)) {
-    problems.push("检测到了 agent，但七条配置路径一条都不存在 —— 家目录可能被重定向了");
+    problems.push(t("scan.noConfigPaths"));
   }
 
   return {

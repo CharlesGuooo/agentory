@@ -56,7 +56,11 @@ export async function runJob(
 }
 
 /** 把一次成功的结果变成缓存条目。 */
-export const toEntry = (s: Session, text: string, model: string): SummaryEntry => ({
+export const toEntry = (
+  s: Session,
+  text: { zh: string; en: string },
+  model: string,
+): SummaryEntry => ({
   agent: s.agent,
   sessionId: s.sessionId,
   text,

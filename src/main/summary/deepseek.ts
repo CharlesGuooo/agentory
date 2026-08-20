@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 /**
  * DeepSeek 客户端。**零依赖** —— Node 22 自带 `fetch`。
  *
@@ -36,11 +37,26 @@ const SYSTEM = [
   "用一句话说明这次会话在做什么，20 到 30 个字，不要标点结尾，不要引号，不要「本次会话」这类开场白。",
   "直接说事情本身，例如「把装机清单从双卡改成单卡并重算总价」。",
   "如果片段里看不出在做什么，就如实说看不出，不要编。",
+  /**
+   * **一次调用同时要中英两段。**
+   *
+   * 花销和耗时大约是分两次调用的一半，而且两段描述的是**同一份理解** ——
+   * 分两次很容易一个说「改装机清单」、另一个说 "fixed a bug"，
+   * 用户切个语言发现讲的不是一回事。
+   *
+   * 英文按**词数**而不是字符数：10–18 词大致对应中文的 20–30 字，
+   * 拿字符数去要求英文只会得到一句被硬掐断的话。
+   */
+  "",
+  "只输出一个 JSON 对象，不要 markdown 代码围栏，形如：",
+  '{"zh": "中文那一句", "en": "the same thing in English"}',
+  "en 那句用 10 到 18 个英文单词，说的必须是同一件事，不是逐字翻译。",
 ].join("\n");
 
 export interface SummaryOk {
   ok: true;
-  text: string;
+  /** 双语。两段说的是同一件事 —— 一次调用出来的，不是分两次各说各的。 */
+  text: { zh: string; en: string };
   model: string;
   /** 真实用量，用来在界面上说真话而不是估算。 */
   usage: { input: number; output: number };
@@ -59,18 +75,42 @@ export type SummaryResult = SummaryOk | SummaryErr;
  *
  * 原来是 120，配上下面那条「撞到上限就整条不采用」，会把长摘要从「显示半句话」
  * 变成「什么都不显示」—— 缓存里实测最长的一条是 122 字，中文大致 1 字 1 token，
- * 那种长度正好撞得上。用不到的 token 不花钱，所以放宽。
+ * 那种长度正好撞得上。改双语之后一次要装中英两段，再翻一倍到 400。
+ * 用不到的 token 不花钱。
  *
  * `finish_reason` 那条检查保留：它防的是真截断，没错，错的是上限定得太紧。
  * 报错文案也引这个常量 —— 写死数字的话，改了上限它就开始撒谎。
  */
-const MAX_TOKENS = 200;
+const MAX_TOKENS = 400;
 
 interface ChatResponse {
   /** `finish_reason === "length"` = 撞到 max_tokens 被截断，那种半句话不能采用 */
   choices?: { message?: { content?: string }; finish_reason?: string }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number };
   error?: { message?: string };
+}
+
+/**
+ * 从模型的回复里抠出 `{zh, en}`。
+ *
+ * **容错但不将就**：允许它裹 markdown 代码围栏、允许前后有多余的话（都见过），
+ * 但**两段都必须非空**，否则返回 null 让整条作废。
+ * 宁可这次没有摘要，也不要一条只有一半语言的记录 —— 缓存有 `sourceLastActivity`
+ * 守着不会重摘，写进去就是永久的。
+ */
+export function parseBilingual(raw: string): { zh: string; en: string } | null {
+  const body = raw.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+  const start = body.indexOf("{");
+  const end = body.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    const o = JSON.parse(body.slice(start, end + 1)) as { zh?: unknown; en?: unknown };
+    const zh = typeof o.zh === "string" ? o.zh.trim() : "";
+    const en = typeof o.en === "string" ? o.en.trim() : "";
+    return zh && en ? { zh, en } : null;
+  } catch {
+    return null;
+  }
 }
 
 async function once(payload: string, key: string, timeoutMs: number): Promise<SummaryResult> {
@@ -99,8 +139,8 @@ async function once(payload: string, key: string, timeoutMs: number): Promise<Su
       // 只把服务端那句话带出来。绝不回显请求体 —— 里面是用户的会话内容。
       return { ok: false, error: body.error?.message ?? `HTTP ${r.status}`, status: r.status };
     }
-    const text = body.choices?.[0]?.message?.content?.trim();
-    if (!text) return { ok: false, error: "模型没有返回内容" };
+    const raw = body.choices?.[0]?.message?.content?.trim();
+    if (!raw) return { ok: false, error: t("sum.noContent") };
     /**
      * **撞到 `max_tokens` 的半句话不能当成功。**
      *
@@ -109,8 +149,16 @@ async function once(payload: string, key: string, timeoutMs: number): Promise<Su
      * 当成失败返回，下次还有机会重来。
      */
     if (body.choices?.[0]?.finish_reason === "length") {
-      return { ok: false, error: `模型写超了 ${String(MAX_TOKENS)} token 被截断，这次不采用` };
+      return { ok: false, error: t("sum.truncated", { n: MAX_TOKENS }) };
     }
+    /**
+     * **解析失败 = 整条不采用。**
+     *
+     * 和上面那条 `finish_reason` 是同一个理由：缓存有 `sourceLastActivity` 守着
+     * 不会重摘，一条半拉的记录写进去就是永久的。宁可这次没有摘要。
+     */
+    const text = parseBilingual(raw);
+    if (text === null) return { ok: false, error: t("sum.badJson") };
     return {
       ok: true,
       text,
@@ -121,7 +169,7 @@ async function once(payload: string, key: string, timeoutMs: number): Promise<Su
       },
     };
   } catch (e) {
-    const msg = (e as Error).name === "AbortError" ? "请求超时" : (e as Error).message;
+    const msg = (e as Error).name === "AbortError" ? t("sum.timeout") : (e as Error).message;
     return { ok: false, error: msg };
   } finally {
     clearTimeout(timer);

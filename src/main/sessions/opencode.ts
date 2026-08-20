@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 import { existsSync } from "node:fs";
 import { agentPaths } from "../paths";
 import { join } from "node:path";
@@ -65,7 +66,7 @@ export function scanOpenCode(dbPath: string = defaultOpenCodeDb()): ScanResult {
         if (row.title) s.nativeTitle = row.title;
         sessions.push(s);
       } catch (e) {
-        problems.push(`会话 ${row.id} 解析失败：${(e as Error).message}`);
+        problems.push(t("scan.sessionParseFailed", { id: row.id, msg: (e as Error).message }));
       }
     }
   } finally {

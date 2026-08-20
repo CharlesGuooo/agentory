@@ -1,3 +1,4 @@
+import type { I18nKey } from "../shared/i18n";
 /**
  * 快捷键表 —— **唯一真源**。处理器和 F1 面板都从这里读，不各写一份。
  *
@@ -28,19 +29,26 @@ export type ActionId =
 export interface Shortcut {
   /** 展示用。面板里逐字显示。 */
   keys: string;
-  label: string;
+  /**
+   * **存 key，不存文案。**
+   *
+   * 这张表是模块顶层的常量数组 —— 直接放译好的字符串会把文案冻在启动那一刻的
+   * 语言上，用户切成英文之后这一屏会固执地留着中文。
+   * （`shell.ts` 的 `stateText` 踩过同一个坑。）
+   */
+  labelKey: I18nKey;
   action: ActionId;
 }
 
 export const SHORTCUTS: Shortcut[] = [
-  { keys: "Ctrl+Shift+N", label: "新建会话", action: "new" },
-  { keys: "Ctrl+Shift+W", label: "结束当前会话", action: "close" },
-  { keys: "Ctrl+Shift+F", label: "历史会话", action: "history" },
-  { keys: "Ctrl+Shift+,", label: "设置", action: "settings" },
-  { keys: "Ctrl+Tab", label: "下一个会话", action: "next" },
-  { keys: "Ctrl+Shift+Tab", label: "上一个会话", action: "prev" },
-  { keys: "Ctrl+Alt+1…9", label: "跳到第 n 个会话", action: "jump" },
-  { keys: "F1", label: "这份快捷键表", action: "help" },
+  { keys: "Ctrl+Shift+N", labelKey: "keys.new", action: "new" },
+  { keys: "Ctrl+Shift+W", labelKey: "keys.close", action: "close" },
+  { keys: "Ctrl+Shift+F", labelKey: "keys.history", action: "history" },
+  { keys: "Ctrl+Shift+,", labelKey: "keys.settings", action: "settings" },
+  { keys: "Ctrl+Tab", labelKey: "keys.next", action: "next" },
+  { keys: "Ctrl+Shift+Tab", labelKey: "keys.prev", action: "prev" },
+  { keys: "Ctrl+Alt+1…9", labelKey: "keys.jump", action: "jump" },
+  { keys: "F1", labelKey: "keys.help", action: "help" },
 
   /**
    * **上面那条「全部走 Ctrl+Shift」的三个例外，理由要说清楚。**
@@ -53,16 +61,16 @@ export const SHORTCUTS: Shortcut[] = [
    * 3. 放大那半今天**本来就是坏的**（Ctrl+= 不生效）—— 一半能用一半不能用，
    *    比两半都不能用更糟。
    */
-  { keys: "Ctrl+=", label: "终端字号放大", action: "fontUp" },
-  { keys: "Ctrl+-", label: "终端字号缩小", action: "fontDown" },
-  { keys: "Ctrl+0", label: "终端字号回默认", action: "fontReset" },
+  { keys: "Ctrl+=", labelKey: "keys.fontUp", action: "fontUp" },
+  { keys: "Ctrl+-", labelKey: "keys.fontDown", action: "fontDown" },
+  { keys: "Ctrl+0", labelKey: "keys.fontReset", action: "fontReset" },
 ];
 
 /** 只在面板里露个脸的键。它们由别的路径处理，塞进 SHORTCUTS 会让 action 字段说谎。 */
-export const NOTED: { keys: string; label: string }[] = [
-  { keys: "Esc", label: "关闭当前弹窗 / 菜单" },
-  { keys: "Ctrl+C", label: "中断 agent（原样交给终端）" },
-  { keys: "Ctrl+W", label: "删一个词（原样交给终端）" },
+export const NOTED: { keys: string; labelKey: I18nKey }[] = [
+  { keys: "Esc", labelKey: "keys.esc" },
+  { keys: "Ctrl+C", labelKey: "keys.ctrlC" },
+  { keys: "Ctrl+W", labelKey: "keys.ctrlW" },
 ];
 
 /** 键盘事件里我们需要的那几个字段。抽成接口是为了能用合成对象测。 */

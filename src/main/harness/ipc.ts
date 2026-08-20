@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 import { ipcMain, shell } from "electron";
 import { scanHarness } from "./all";
 import { checkUninstall, installSkill } from "./install";
@@ -52,7 +53,7 @@ export function registerHarnessIpc(): void {
       try {
         await shell.trashItem(req.path);
       } catch (e) {
-        return { ok: false, error: `丢进回收站失败：${(e as Error).message}` };
+        return { ok: false, error: t("hx.recycleFailed", { msg: (e as Error).message }) };
       }
       return { ok: true };
     },

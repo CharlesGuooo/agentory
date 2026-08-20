@@ -1,3 +1,4 @@
+import { getLang, t } from "../../shared/i18n";
 import { app, ipcMain, safeStorage, type BrowserWindow } from "electron";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -57,6 +58,10 @@ export interface SummaryState {
 export interface SummaryText {
   agent: AgentId;
   sessionId: string;
+  /**
+   * **已经按当前语言挑好的那一段。** 渲染层不该拿着双语对象自己挑 ——
+   * 那会让「显示哪段」变成两个地方共同决定的事。
+   */
   text: string;
 }
 
@@ -102,7 +107,12 @@ export function registerSummaryIpc(getWindow: () => BrowserWindow | null, enable
 
   /** 已有的摘要。渲染层用它填第二行的优先级链。 */
   ipcMain.handle("summary:all", (): SummaryText[] =>
-    [...cache.values()].map((e) => ({ agent: e.agent, sessionId: e.sessionId, text: e.text })),
+    [...cache.values()].map((e) => ({
+      agent: e.agent,
+      sessionId: e.sessionId,
+      // 取不到就退回另一种语言 —— 一条语言不对的摘要，仍然比「没有可读的开头」有用
+      text: e.text[getLang()] || e.text[getLang() === "zh" ? "en" : "zh"],
+    })),
   );
 
   /**
@@ -115,9 +125,10 @@ export function registerSummaryIpc(getWindow: () => BrowserWindow | null, enable
     const s = scanAllAgents().sessions.find(
       (x) => x.agent === ref.agent && x.sessionId === ref.sessionId,
     );
-    if (!s) return "找不到这条会话";
+    if (!s) return t("sum.sessionNotFound");
     const p = buildPayload(s);
-    return `${renderPayload(p)}\n\n——\n共 ${p.bytes} 字节，为构造它读了 ${Math.round(p.bytesRead / 1024)} KB`;
+    const foot = t("sum.payloadFoot", { bytes: p.bytes, kb: Math.round(p.bytesRead / 1024) });
+    return `${renderPayload(p)}\n\n——\n${foot}`;
   });
 
   ipcMain.handle("summary:stop", (): void => {
@@ -132,8 +143,8 @@ export function registerSummaryIpc(getWindow: () => BrowserWindow | null, enable
     "summary:run",
     async (_e, refs: { agent: AgentId; sessionId: string }[]): Promise<{ ok: number; failed: number; error?: string }> => {
       const k = readKey();
-      if (!k.key) return { ok: 0, failed: 0, error: "还没有填 API key" };
-      if (running) return { ok: 0, failed: 0, error: "已经在跑了" };
+      if (!k.key) return { ok: 0, failed: 0, error: t("sum.noKey") };
+      if (running) return { ok: 0, failed: 0, error: t("sum.alreadyRunning") };
 
       const want = new Set(refs.map((r) => summaryKey(r.agent, r.sessionId)));
       const all = scanAllAgents().sessions.filter((s: Session) =>
@@ -166,7 +177,8 @@ export function registerSummaryIpc(getWindow: () => BrowserWindow | null, enable
               total,
               ok,
               failed,
-              last: o.result.ok ? o.result.text : o.result.error,
+              // 进度行是给人看的一句话，按当前语言挑一段 —— 双语对象在这里没有意义
+              last: o.result.ok ? o.result.text[getLang()] : o.result.error,
             });
           },
           () => stop,

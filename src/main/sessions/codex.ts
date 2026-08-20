@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { agentPaths } from "../paths";
 import { join } from "node:path";
@@ -51,7 +52,7 @@ export function scanCodex(root: string = defaultCodexRoot()): ScanResult {
         }),
       );
     } catch (e) {
-      problems.push(`${name} 解析失败：${(e as Error).message}`);
+      problems.push(t("scan.parseFailed", { name, msg: (e as Error).message }));
     }
   }
 
